@@ -15,6 +15,7 @@ struct interpreter {
 
 int init_interpreter(struct interpreter* I) {
         memset(I, 0, sizeof(struct interpreter));
+        return 0;
 }
 
 int main(int argc, char* argv[]) {
