@@ -1,5 +1,7 @@
-#include "stream.h"
+#include <glib.h>
 #include <stdio.h>
+
+#include "stream.h"
 
 void file_close_stream(void* hstream) {
         fclose((FILE*)hstream);
@@ -13,12 +15,12 @@ void file_put_char(int ch, void* hstream) {
         ungetc(ch, (FILE*)hstream);
 }
 
-int init_file_stream(struct instream* stream, const char* filename) {
+gboolean init_file_stream(struct instream* stream, const char* filename) {
         stream->hstream = fopen(filename, "r");
         if (!stream->hstream)
-                return -1;
+                return FALSE;
         stream->close_stream = &file_close_stream;
         stream->get_char = &file_get_char;
         stream->put_char = &file_put_char;
-        return 0;
+        return TRUE;
 }

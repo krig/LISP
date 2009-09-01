@@ -8,6 +8,6 @@ struct instream {
         void (*put_char)(int, void*);
 };
 
-int init_file_stream(struct instream* stream, const char* filename);
+gboolean init_file_stream(struct instream* stream, const char* filename);
 
 #endif//_STREAM_H_
