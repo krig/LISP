@@ -24,11 +24,20 @@ struct Word {
 };
 
 #define WordAtomP(w) ((w)->address.umask &= 1)
-#define WordAtomType(w) ((w)->address.umask & 0x00000006)
+#define WordAtomType(w) ((w)->address.umask & 0xfffffff0)
+
+#define WordNilP(w) ((w)->address.word == NULL && (w)->decrement.word == NULL)
 
 #define WORDATOM_WORD 0
-#define WORDATOM_NUM 2
-#define WORDATOM_STR 6
+#define WORDATOM_NUM 0x10
+#define WORDATOM_STR 0x20
+
+#define ATOM_STR(w) ((WordAtomType(w)==WORDATOM_STR) ? ((w)->decrement.str) : NULL)
+#define ATOM_NUM(w) ((WordAtomType(w)==WORDATOM_NUM) ? ((w)->decrement.num) : 0)
+#define ATOM_WORD(w) ((WordAtomType(w)==WORDATOM_WORD) ? ((w)->decrement.word) : NULL)
+
+#define CAR(w) ((w)->address.word)
+#define CDR(w) ((w)->decrement.word)
 
 /*
   COND:
@@ -36,49 +45,11 @@ struct Word {
   output: first value whose expression evaluates to true
  */
 
-struct slot { /* represents a value */
-        unsigned int type;
-        union {
-                int number;
-                const char* str;
-                void* voidp;
-        } data;
-};
-
-#define SLOT_SYMBOL 0
-#define SLOT_NUMBER 1
-#define SLOT_STRING 2
-#define SLOT_DATA 3
-
-typedef union {
-        struct slot* atom;
-        struct pair* pair;
-} pair_entry_t;
-
-struct pair {
-        pair_entry_t car;
-        pair_entry_t cdr;
-        unsigned int meta;
-};
-
-#define car_atom_p(p) (((p)->meta)&1)
-#define car_pair_p(p) ((((p)->meta)&1) == 0)
-#define cdr_atom_p(p) (((p)->meta)&2)
-#define cdr_pair_p(p) ((((p)->meta)&2) == 0)
-#define car_atom(p) ((p)->car.atom)
-#define car_pair(p) ((p)->car.pair)
-#define cdr_atom(p) ((p)->cdr.atom)
-#define cdr_pair(p) ((p)->cdr.pair)
-#define car_nil_p(p) ((p)->car.pair == NULL)
-#define set_car_atom(p, a) do { struct pair* _setptr = (p); _setptr->meta |= 1; _setptr->car.atom = (a); } while(0)
-#define set_cdr_atom(p, a) do { struct pair* _setptr = (p); _setptr->meta |= 2; _setptr->cdr.atom = (a); } while(0)
-#define set_car_pair(p, r) do { struct pair* _setptr = (p); _setptr->meta &= ~1; _setptr->car.pair = (r); } while(0)
-#define set_cdr_pair(p, r) do { struct pair* _setptr = (p); _setptr->meta &= ~2; _setptr->cdr.pair = (r); } while(0)
-#define set_nil_pair(p) do { struct pair* _setptr = (p); _setptr->meta = 0; _setptr->car.pair = _setptr->cdr.pair = NULL; } while(0)
-
 struct interpreter {
         struct instream stream;
-        struct slot* T;
+        struct Word t;
+        struct Word nil;
+        struct Word* env;
 };
 
 const char* intern(const char* str) {
@@ -88,9 +59,12 @@ const char* intern(const char* str) {
 gboolean init_interpreter(struct interpreter* I, const char* filename) {
         memset(I, 0, sizeof(struct interpreter));
         init_file_stream(&I->stream, filename);
-        I->T = GC_MALLOC(sizeof(struct slot));
-        I->T->type = SLOT_SYMBOL;
-        I->T->data.str = intern("true");
+        /* set env to () */
+        I->t.address.umask = 1;
+        I->t.decrement.num = 1;
+        I->nil.address.word = NULL;
+        I->nil.decrement.word = NULL;
+        I->env = &I->nil;
         return TRUE;
 }
 
@@ -102,37 +76,97 @@ void put_char(struct interpreter* I, int ch) {
         I->stream.put_char(ch, I->stream.hstream);
 }
 
+void print_atom(struct interpreter* I, struct Word* word) {
+        if (WordNilP(word)) {
+                puts("nil");
+        }
+        else {
+                switch (WordAtomType(word)) {
+                case WORDATOM_WORD:
+                        printf("%p", ATOM_WORD(word));
+                        break;
+                case WORDATOM_NUM:
+                        printf("%d", ATOM_NUM(word));
+                        break;
+                case WORDATOM_STR:
+                        printf("%s", ATOM_STR(word));
+                        break;
+                default:
+                        puts("***");
+                        break;
+                }
+        }
+}
+
+void print_sexpr(struct interpreter* I, struct Word* word) {
+        puts("(");
+        if (WordAtomP(CAR(word))) {
+                print_atom(I, CAR(word));
+        }
+        else {
+                print_sexpr(I, CAR(word));
+        }
+        puts(" ");
+        if (WordAtomP(CDR(word))) {
+                print_atom(I, CDR(word));
+        }
+        else {
+                print_sexpr(I, CDR(word));
+        }
+        puts(")");
+}
+
+struct Word* eq(struct interpreter* I, struct Word* x, struct Word* y) {
+        return (WordAtomP(x) && WordAtomP(y) && (x->decrement.word == y->decrement.word)) ? &I->t : &I->nil;
+}
+
+struct Word* cond(struct interpreter* I, struct Word* e) {
+        return &I->nil;
+}
+
+struct Word* eval(struct interpreter* I, struct Word* e) {
+        return e;
+}
+
+struct Word* read(struct interpreter* I) {
+        return NULL;
+}
+
+void loop(struct interpreter* I, struct Word* word) {
+        const char* STOP = intern("stop");
+        const char* QUOTE = intern("quote");
+        while (1) {
+                if (word == NULL) {
+                        return;
+                }
+                else if (WordNilP(word)) {
+                        print_atom(I, word);
+                        word = eval(I, read(I));
+                }
+                else if (WordAtomP(word)) {
+                        if (ATOM_STR(word) == STOP)
+                                return;
+                        print_atom(I, word);
+                        word = eval(I, read(I));
+                }
+                else if (WordAtomP(CAR(word)) && ATOM_STR(CAR(word)) == QUOTE) {
+                        print_sexpr(I, word);
+                        word = eval(I, read(I));
+                }
+                else {
+                        word = eval(I, word);
+                }
+        }
+}
+
 int main(int argc, char* argv[]) {
         struct interpreter i;
         struct interpreter* I = &i;
         init_interpreter(I, argv[1]);
-        printf("%c\n", get_char(I));
 
-        struct slot* s1 = GC_MALLOC(sizeof(struct slot));
-        struct slot* s2 = GC_MALLOC(sizeof(struct slot));
+        print_atom(I, I->env);
 
-        struct pair* p1 = GC_MALLOC(sizeof(struct pair));
-        struct pair* p2 = GC_MALLOC(sizeof(struct pair));
+        loop(I, eval(I, read(I)));
 
-        set_nil_pair(p1);
-        set_nil_pair(p2);
-        set_car_pair(p1, p2);
-        set_cdr_atom(p1, s1);
-        set_car_atom(p2, s2);
-        set_cdr_pair(p2, NULL);
-
-        printf("(car %d/%d) (cdr %d/%d) (%u)\n",
-               car_atom_p(p1),
-               car_pair_p(p1),
-               cdr_atom_p(p1),
-               cdr_pair_p(p1),
-               p1->meta);
-        printf("(car %d/%d) (cdr %d/%d) (%u)\n",
-               car_atom_p(p2),
-               car_pair_p(p2),
-               cdr_atom_p(p2),
-               cdr_pair_p(p2),
-               p2->meta);
-        
         return 0;
 }
