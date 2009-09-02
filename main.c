@@ -24,10 +24,10 @@ struct Word {
         decrement_t decrement;
 };
 
-#define WordAtomP(w) ((w)->address.umask &= 1)
+#define WordAtomP(w) ((w)->address.umask & 1)
 #define WordAtomType(w) ((w)->address.umask & 0xfffffff0)
 
-#define WordNilP(w) ((w) == NULL)
+#define WordNilP(w) ((w) == NULL || ((w)->address.word == NULL && (w)->decrement.word == NULL))
 
 #define WORDATOM_WORD 0
 #define WORDATOM_NUM 0x10
@@ -108,19 +108,31 @@ void print_atom(struct interpreter* I, struct Word* word) {
 
 void print_sexpr(struct interpreter* I, struct Word* word) {
         printf("(");
-        if (!WordNilP(word)) {
-                if (WordAtomP(CAR(word))) {
-                        print_atom(I, CAR(word));
-                }
-                else {
-                        print_sexpr(I, CAR(word));
-                }
-                printf(" ");
-                if (WordAtomP(CDR(word))) {
-                        print_atom(I, CDR(word));
-                }
-                else {
-                        print_sexpr(I, CDR(word));
+
+        if (WordAtomP(CAR(word)) && WordAtomP(CDR(word))) {
+                print_atom(I, CAR(word));
+                printf(" . ");
+                print_atom(I, CDR(word));
+        }
+        else {
+                while (1) {
+                        if (WordNilP(CAR(word))) {
+                                printf("nil");
+                        }
+                        else if (WordAtomP(CAR(word))) {
+                                print_atom(I, CAR(word));
+                        }
+                        else {
+                                print_sexpr(I, CAR(word));
+                        }
+
+                        if (!WordNilP(CDR(word))) {
+                                printf(" ");
+                        }
+                        word = CDR(word);
+                        if (WordNilP(word)) {
+                                break;
+                        }
                 }
         }
         printf(")");
@@ -166,11 +178,12 @@ struct Word* eval(struct interpreter* I, struct Word* e) {
         }
 
         if (WordNilP(e)) {
-                return NULL;
+                return &I->nil;
         } else if (WordAtomP(e)) {
                 return e;
         }
         else {
+                // todo: apply
                 struct Word* car = eval(I, CAR(e));
                 struct Word* cdr = CDR(e);
                 const char* astr = ATOM_STR(car);
@@ -189,7 +202,7 @@ struct Word* eval(struct interpreter* I, struct Word* e) {
                 else {
                         printf("Eval error:");
                         print_sexpr(I, e);
-                        return NULL;
+                        return &I->nil;
                 }
         }
 }
@@ -220,9 +233,6 @@ struct Word* read(struct interpreter* I) {
 
                 ch = get_char(I);
         }
-        if (ret) {
-                print_sexpr(I, ret);
-        }
         return ret;
 }
 
@@ -242,7 +252,6 @@ struct Word* read_atom(struct interpreter* I) {
                 put_char(I, ch); // rewind
                 struct Word* atom = malloc(sizeof(struct Word));
                 SetAtomNum(atom, atoi(buf));
-                print_atom(I, atom);
                 return atom;
         }
         else if (isalpha(ch)) {
@@ -256,7 +265,6 @@ struct Word* read_atom(struct interpreter* I) {
                 put_char(I, ch); // rewind
                 struct Word* atom = malloc(sizeof(struct Word));
                 SetAtomStr(atom, intern(buf));
-                print_atom(I, atom);
                 return atom;
         }
         else if (ch == '"') {
@@ -278,26 +286,29 @@ struct Word* read_list(struct interpreter* I) {
 
         struct Word* head = malloc(sizeof(struct Word));
         SetWord(head, NULL, NULL);
-        printf("open list\n");
 
+        struct Word* prev = NULL;
         struct Word* curr = head;
 
         ch = get_char(I);
         while (ch) {
                 if (isspace(ch)) {
                 }
-                else if (ch == '(') {
-                        put_char(I, ch);
-                        SetCAR(curr, read_list(I));
-                }
                 else if (ch == ')') {
-                        printf("close list\n");
                         break;
                 }
-                else {
-                        struct Word* prev = curr;
+                else if (ch == '(') {
+                        prev = curr;
                         put_char(I, ch);
-                        SetCAR(curr, read_atom(I));
+                        SetCAR(prev, read_list(I));
+                        curr = malloc(sizeof(struct Word));
+                        SetWord(curr, NULL, NULL);
+                        SetCDR(prev, curr);
+                }
+                else {
+                        prev = curr;
+                        put_char(I, ch);
+                        SetCAR(prev, read_atom(I));
                         curr = malloc(sizeof(struct Word));
                         SetWord(curr, NULL, NULL);
                         SetCDR(prev, curr);
@@ -314,16 +325,19 @@ void loop(struct interpreter* I, struct Word* word) {
         while (1) {
                 if (WordNilP(word)) {
                         print_atom(I, word);
+                        puts("");
                         word = read(I);
                 }
                 else if (WordAtomP(word)) {
                         if (ATOM_STR(word) == STOP)
                                 return;
                         print_atom(I, word);
+                        puts("");
                         word = read(I);
                 }
                 else if (WordAtomP(CAR(word)) && ATOM_STR(CAR(word)) == QUOTE) {
                         print_sexpr(I, word);
+                        puts("");
                         word = read(I);
                 }
                 if (word == NULL)
@@ -337,9 +351,17 @@ int main(int argc, char* argv[]) {
         struct interpreter* I = &i;
         init_interpreter(I, argv[1]);
 
-        print_atom(I, I->env);
+        struct Word* lst = read(I);
+        printf("\npost-read\n");
+        print_sexpr(I, lst);
+        printf("\npre-eval\n");
 
-        loop(I, eval(I, read(I)));
+        lst = eval(I, lst);
+        printf("\npost-eval\n");
+        print_sexpr(I, lst);
+
+        printf("\nloop\n");
+        loop(I, lst);
 
         return 0;
 }
