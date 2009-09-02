@@ -166,14 +166,18 @@ struct Word* eval(struct interpreter* I, struct Word* e) {
         static const char* squote = NULL;
         static const char* scar = NULL;
         static const char* scdr = NULL;
+        static const char* satom = NULL;
         static const char* scond = NULL;
+        static const char* scons = NULL;
         static const char* eq = NULL;
 
         if (squote == NULL) {
                 squote = intern("quote");
                 scar = intern("car");
                 scdr = intern("cdr");
+                satom = intern("atom");
                 scond = intern("cond");
+                scons = intern("cons");
                 eq = intern("eq");
         }
 
@@ -190,14 +194,25 @@ struct Word* eval(struct interpreter* I, struct Word* e) {
                 if (astr == squote) {
                         return cdr;
                 }
+                else if (astr == satom) {
+                        struct Word* ret = eval(I, CAR(cdr));
+                        if (WordAtomP(ret))
+                                return ret;
+                        else
+                                return &I->nil;
+                }
                 else if (astr == scar) {
-                        return CAR(cdr);
+                        return CAR(eval(I, CAR(cdr)));
                 }
                 else if (astr == scdr) {
-                        return CDR(cdr);
+                        return CDR(eval(I, CAR(cdr)));
                 }
                 else if (astr == scond) {
+                        // todo: evcon()
                         return cond(I, cdr);
+                }
+                else if (astr == scons) {
+                        return NULL;
                 }
                 else {
                         printf("Eval error:");
