@@ -107,7 +107,7 @@ void print_atom(struct interpreter* I, struct Word* word) {
 }
 
 void print_sexpr(struct interpreter* I, struct Word* word) {
-        puts("(");
+        printf("(");
         if (!WordNilP(word)) {
                 if (WordAtomP(CAR(word))) {
                         print_atom(I, CAR(word));
@@ -115,7 +115,7 @@ void print_sexpr(struct interpreter* I, struct Word* word) {
                 else {
                         print_sexpr(I, CAR(word));
                 }
-                puts(" ");
+                printf(" ");
                 if (WordAtomP(CDR(word))) {
                         print_atom(I, CDR(word));
                 }
@@ -123,7 +123,7 @@ void print_sexpr(struct interpreter* I, struct Word* word) {
                         print_sexpr(I, CDR(word));
                 }
         }
-        puts(")");
+        printf(")");
 }
 
 struct Word* eq(struct interpreter* I, struct Word* x, struct Word* y) {
@@ -195,89 +195,117 @@ struct Word* eval(struct interpreter* I, struct Word* e) {
 }
 
 
+struct Word* read(struct interpreter* I);
+
+struct Word* read_atom(struct interpreter* I);
+struct Word* read_list(struct interpreter* I);
+
 struct Word* read(struct interpreter* I) {
-        const int STACKSIZE = 512;
-        char buf[128];
-        struct Word* wordstack[STACKSIZE];
-        int wordtop;
         int ch;
-        wordtop = 0;
+        struct Word* ret;
         ch = get_char(I);
         while (ch) {
                 if (isspace(ch)) {
                 }
                 else if (ch == '(') {
-                        wordstack[wordtop++] = malloc(sizeof(struct Word));
-
-                        if (wordtop>1) {
-                                SetCDR(wordstack[wordtop-2], wordstack[wordtop-1]);
-                        }
-
-                        SetWord(wordstack[wordtop-1], NULL, NULL);
-                }
-                else if (ch == ')') {
-                        if (wordtop)
-                                wordtop--;
-                }
-                else if (isdigit(ch)) {
-                        /* parse number */
-                        int i = 0;
-                        while (isdigit(ch)) {
-                                buf[i++] = ch;
-                                ch = get_char(I);
-                        }
-                        buf[i] = 0;
-                        put_char(I, ch); // rewind
-                        struct Word* atom = malloc(sizeof(struct Word));
-                        SetAtomNum(atom, atoi(buf));
-
-                        if (!wordtop) {
-                                return atom;
-                        }
-                        else {
-                                SetCAR(wordstack[wordtop-1], atom);
-                                wordstack[wordtop++] = malloc(sizeof(struct Word));
-                                if (wordtop>1) {
-                                        SetCDR(wordstack[wordtop-2], wordstack[wordtop-1]);
-                                }
-                                SetWord(wordstack[wordtop-1], NULL, NULL);
-                        }
-                }
-                else if (isalpha(ch)) {
-                        /* parse symbol */
-                        int i = 0;
-                        while (isalnum(ch)) {
-                                buf[i++] = ch;
-                                ch = get_char(I);
-                        }
-                        buf[i] = 0;
-                        put_char(I, ch); // rewind
-                        struct Word* atom = malloc(sizeof(struct Word));
-                        SetAtomStr(atom, intern(buf));
-                        if (!wordtop) {
-                                return atom;
-                        }
-                        else {
-                                SetCAR(wordstack[wordtop-1], atom);
-                                wordstack[wordtop++] = malloc(sizeof(struct Word));
-                                if (wordtop>1) {
-                                        SetCDR(wordstack[wordtop-2], wordstack[wordtop-1]);
-                                }
-                                SetWord(wordstack[wordtop-1], NULL, NULL);
-                        }
-                }
-                else if (ch == '"') {
-                        /* parse string */
+                        put_char(I, ch);
+                        ret = read_list(I);
+                        break;
                 }
                 else {
-                        if (isgraph(ch))
-                                printf("Unknown token: %c\n", ch);
-                        return NULL;
+                        put_char(I, ch);
+                        ret = read_atom(I);
+                        break;
                 }
 
                 ch = get_char(I);
         }
-        return NULL;
+        if (ret) {
+                print_sexpr(I, ret);
+        }
+        return ret;
+}
+
+struct Word* read_atom(struct interpreter* I) {
+        int ch;
+        char buf[128];
+
+        ch = get_char(I);
+        if (isdigit(ch)) {
+                /* parse number */
+                int i = 0;
+                while (isdigit(ch)) {
+                        buf[i++] = ch;
+                        ch = get_char(I);
+                }
+                buf[i] = 0;
+                put_char(I, ch); // rewind
+                struct Word* atom = malloc(sizeof(struct Word));
+                SetAtomNum(atom, atoi(buf));
+                print_atom(I, atom);
+                return atom;
+        }
+        else if (isalpha(ch)) {
+                /* parse symbol */
+                int i = 0;
+                while (isalnum(ch)) {
+                        buf[i++] = ch;
+                        ch = get_char(I);
+                }
+                buf[i] = 0;
+                put_char(I, ch); // rewind
+                struct Word* atom = malloc(sizeof(struct Word));
+                SetAtomStr(atom, intern(buf));
+                print_atom(I, atom);
+                return atom;
+        }
+        else if (ch == '"') {
+                /* parse string */
+                return NULL;
+        }
+        else {
+                if (isgraph(ch))
+                        printf("Unknown token: %c\n", ch);
+                return NULL;
+        }
+}
+
+struct Word* read_list(struct interpreter* I) {
+        int ch;
+        ch = get_char(I);
+        if (ch != '(')
+                return NULL;
+
+        struct Word* head = malloc(sizeof(struct Word));
+        SetWord(head, NULL, NULL);
+        printf("open list\n");
+
+        struct Word* curr = head;
+
+        ch = get_char(I);
+        while (ch) {
+                if (isspace(ch)) {
+                }
+                else if (ch == '(') {
+                        put_char(I, ch);
+                        SetCAR(curr, read_list(I));
+                }
+                else if (ch == ')') {
+                        printf("close list\n");
+                        break;
+                }
+                else {
+                        struct Word* prev = curr;
+                        put_char(I, ch);
+                        SetCAR(curr, read_atom(I));
+                        curr = malloc(sizeof(struct Word));
+                        SetWord(curr, NULL, NULL);
+                        SetCDR(prev, curr);
+                }
+
+                ch = get_char(I);
+        }
+        return head;
 }
 
 void loop(struct interpreter* I, struct Word* word) {
