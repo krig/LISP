@@ -2,7 +2,7 @@ glib_cflags = `pkg-config --cflags glib-2.0`
 glib_libs = `pkg-config --libs glib-2.0`
 
 CC=gcc
-CFLAGS=-Wall -Werror -g -std=c99 $(glib_cflags)
+CFLAGS=-Wall -Werror -g -std=c99 $(glib_cflags) -I/usr/include/gc
 DEPS = stream.h
 OBJ = main.o stream.o
 LIBS = -lgc $(glib_libs)
