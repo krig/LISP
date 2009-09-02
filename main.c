@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <glib.h>
+#include <ctype.h>
 #include <gc/gc.h>
 #include "stream.h"
 
@@ -26,7 +27,7 @@ struct Word {
 #define WordAtomP(w) ((w)->address.umask &= 1)
 #define WordAtomType(w) ((w)->address.umask & 0xfffffff0)
 
-#define WordNilP(w) ((w)->address.word == NULL && (w)->decrement.word == NULL)
+#define WordNilP(w) ((w) == NULL)
 
 #define WORDATOM_WORD 0
 #define WORDATOM_NUM 0x10
@@ -35,6 +36,13 @@ struct Word {
 #define ATOM_STR(w) ((WordAtomType(w)==WORDATOM_STR) ? ((w)->decrement.str) : NULL)
 #define ATOM_NUM(w) ((WordAtomType(w)==WORDATOM_NUM) ? ((w)->decrement.num) : 0)
 #define ATOM_WORD(w) ((WordAtomType(w)==WORDATOM_WORD) ? ((w)->decrement.word) : NULL)
+
+#define SetWord(w, ca, cd) do { (w)->address.word = (ca); (w)->decrement.word = (cd); } while (0)
+#define SetCAR(w, ca) do { (w)->address.word = (ca); } while (0)
+#define SetCDR(w, cd) do { (w)->decrement.word = (cd); } while (0)
+#define SetAtomWord(w, ww) do { (w)->address.umask = 1+WORDATOM_WORD; (w)->decrement.word = (ww); } while(0)
+#define SetAtomNum(w, n) do { (w)->address.umask = 1+WORDATOM_NUM; (w)->decrement.num = (n); } while(0)
+#define SetAtomStr(w, s) do { (w)->address.umask = 1+WORDATOM_STR; (w)->decrement.str = (s); } while(0)
 
 #define CAR(w) ((w)->address.word)
 #define CDR(w) ((w)->decrement.word)
@@ -64,7 +72,7 @@ gboolean init_interpreter(struct interpreter* I, const char* filename) {
         I->t.decrement.num = 1;
         I->nil.address.word = NULL;
         I->nil.decrement.word = NULL;
-        I->env = &I->nil;
+        I->env = NULL;
         return TRUE;
 }
 
@@ -100,35 +108,175 @@ void print_atom(struct interpreter* I, struct Word* word) {
 
 void print_sexpr(struct interpreter* I, struct Word* word) {
         puts("(");
-        if (WordAtomP(CAR(word))) {
-                print_atom(I, CAR(word));
-        }
-        else {
-                print_sexpr(I, CAR(word));
-        }
-        puts(" ");
-        if (WordAtomP(CDR(word))) {
-                print_atom(I, CDR(word));
-        }
-        else {
-                print_sexpr(I, CDR(word));
+        if (!WordNilP(word)) {
+                if (WordAtomP(CAR(word))) {
+                        print_atom(I, CAR(word));
+                }
+                else {
+                        print_sexpr(I, CAR(word));
+                }
+                puts(" ");
+                if (WordAtomP(CDR(word))) {
+                        print_atom(I, CDR(word));
+                }
+                else {
+                        print_sexpr(I, CDR(word));
+                }
         }
         puts(")");
 }
 
 struct Word* eq(struct interpreter* I, struct Word* x, struct Word* y) {
-        return (WordAtomP(x) && WordAtomP(y) && (x->decrement.word == y->decrement.word)) ? &I->t : &I->nil;
+        return (WordAtomP(x) && WordAtomP(y) && (x->decrement.word == y->decrement.word)) ? &I->t : NULL;
 }
 
+struct Word* eval(struct interpreter* I, struct Word* e);
+struct Word* cond(struct interpreter* I, struct Word* e);
+
+
 struct Word* cond(struct interpreter* I, struct Word* e) {
+        while (e) {
+                struct Word* cond0 = CAR(e);
+                struct Word* e0 = CAR(cond0);
+                struct Word* s1 = CDR(cond0);
+
+                if (e0) {
+                        e0 = eval(I, e0);
+                        if (e0)
+                                return s1;
+                }
+                e = CDR(e);
+        }
         return &I->nil;
 }
 
 struct Word* eval(struct interpreter* I, struct Word* e) {
-        return e;
+        static const char* squote = NULL;
+        static const char* scar = NULL;
+        static const char* scdr = NULL;
+        static const char* scond = NULL;
+        static const char* eq = NULL;
+
+        if (squote == NULL) {
+                squote = intern("quote");
+                scar = intern("car");
+                scdr = intern("cdr");
+                scond = intern("cond");
+                eq = intern("eq");
+        }
+
+        if (WordNilP(e)) {
+                return NULL;
+        } else if (WordAtomP(e)) {
+                return e;
+        }
+        else {
+                struct Word* car = eval(I, CAR(e));
+                struct Word* cdr = CDR(e);
+                const char* astr = ATOM_STR(car);
+                if (astr == squote) {
+                        return cdr;
+                }
+                else if (astr == scar) {
+                        return CAR(cdr);
+                }
+                else if (astr == scdr) {
+                        return CDR(cdr);
+                }
+                else if (astr == scond) {
+                        return cond(I, cdr);
+                }
+                else {
+                        printf("Eval error:");
+                        print_sexpr(I, e);
+                        return NULL;
+                }
+        }
 }
 
+
 struct Word* read(struct interpreter* I) {
+        const int STACKSIZE = 512;
+        char buf[128];
+        struct Word* wordstack[STACKSIZE];
+        int wordtop;
+        int ch;
+        wordtop = 0;
+        ch = get_char(I);
+        while (ch) {
+                if (isspace(ch)) {
+                }
+                else if (ch == '(') {
+                        wordstack[wordtop++] = malloc(sizeof(struct Word));
+
+                        if (wordtop>1) {
+                                SetCDR(wordstack[wordtop-2], wordstack[wordtop-1]);
+                        }
+
+                        SetWord(wordstack[wordtop-1], NULL, NULL);
+                }
+                else if (ch == ')') {
+                        if (wordtop)
+                                wordtop--;
+                }
+                else if (isdigit(ch)) {
+                        /* parse number */
+                        int i = 0;
+                        while (isdigit(ch)) {
+                                buf[i++] = ch;
+                                ch = get_char(I);
+                        }
+                        buf[i] = 0;
+                        put_char(I, ch); // rewind
+                        struct Word* atom = malloc(sizeof(struct Word));
+                        SetAtomNum(atom, atoi(buf));
+
+                        if (!wordtop) {
+                                return atom;
+                        }
+                        else {
+                                SetCAR(wordstack[wordtop-1], atom);
+                                wordstack[wordtop++] = malloc(sizeof(struct Word));
+                                if (wordtop>1) {
+                                        SetCDR(wordstack[wordtop-2], wordstack[wordtop-1]);
+                                }
+                                SetWord(wordstack[wordtop-1], NULL, NULL);
+                        }
+                }
+                else if (isalpha(ch)) {
+                        /* parse symbol */
+                        int i = 0;
+                        while (isalnum(ch)) {
+                                buf[i++] = ch;
+                                ch = get_char(I);
+                        }
+                        buf[i] = 0;
+                        put_char(I, ch); // rewind
+                        struct Word* atom = malloc(sizeof(struct Word));
+                        SetAtomStr(atom, intern(buf));
+                        if (!wordtop) {
+                                return atom;
+                        }
+                        else {
+                                SetCAR(wordstack[wordtop-1], atom);
+                                wordstack[wordtop++] = malloc(sizeof(struct Word));
+                                if (wordtop>1) {
+                                        SetCDR(wordstack[wordtop-2], wordstack[wordtop-1]);
+                                }
+                                SetWord(wordstack[wordtop-1], NULL, NULL);
+                        }
+                }
+                else if (ch == '"') {
+                        /* parse string */
+                }
+                else {
+                        if (isgraph(ch))
+                                printf("Unknown token: %c\n", ch);
+                        return NULL;
+                }
+
+                ch = get_char(I);
+        }
         return NULL;
 }
 
@@ -136,26 +284,23 @@ void loop(struct interpreter* I, struct Word* word) {
         const char* STOP = intern("stop");
         const char* QUOTE = intern("quote");
         while (1) {
-                if (word == NULL) {
-                        return;
-                }
-                else if (WordNilP(word)) {
+                if (WordNilP(word)) {
                         print_atom(I, word);
-                        word = eval(I, read(I));
+                        word = read(I);
                 }
                 else if (WordAtomP(word)) {
                         if (ATOM_STR(word) == STOP)
                                 return;
                         print_atom(I, word);
-                        word = eval(I, read(I));
+                        word = read(I);
                 }
                 else if (WordAtomP(CAR(word)) && ATOM_STR(CAR(word)) == QUOTE) {
                         print_sexpr(I, word);
-                        word = eval(I, read(I));
+                        word = read(I);
                 }
-                else {
-                        word = eval(I, word);
-                }
+                if (word == NULL)
+                        return;
+                word = eval(I, word);
         }
 }
 
