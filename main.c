@@ -72,7 +72,9 @@ struct interpreter {
         struct instream stream;
         struct Word t;
         struct Word nil;
-        struct Word* env;
+        struct Word* env; /* assoclist of variables */
+        struct Word* call; /* when in a function, refers to the call form itself */
+        struct Word* macros; /* assoclist of macros */
 };
 
 const char* intern(const char* str) {
@@ -95,9 +97,14 @@ void put_char(struct interpreter* I, int ch) {
         I->stream.put_char(ch, I->stream.hstream);
 }
 
+struct Word* lisp_eq(struct interpreter* I, struct Word* x, struct Word* y);
+
 void print_atom(struct interpreter* I, struct Word* word) {
         if (WordNilP(word)) {
-                puts("nil");
+                printf("nil");
+        }
+        else if (lisp_eq(I, word, &I->t) == &I->t) {
+                printf("t");
         }
         else {
                 switch (WordAtomType(word)) {
@@ -115,7 +122,7 @@ void print_atom(struct interpreter* I, struct Word* word) {
                         printf("fn#%p", ATOM_FUNCTION(word));
                         break;
                 default:
-                        puts("***");
+                        printf("<STRANGE ATOM>");
                         break;
                 }
         }
@@ -270,6 +277,7 @@ struct Word* lisp_eval(struct interpreter* I, struct Word* e, struct Word* a) {
         static const char* seq = NULL;
         static const char* slabel = NULL;
         static const char* sfn = NULL;
+        static const char* ssetq = NULL;
 
         if (squote == NULL) {
                 squote = intern("quote");
@@ -281,6 +289,7 @@ struct Word* lisp_eval(struct interpreter* I, struct Word* e, struct Word* a) {
                 seq = intern("eq");
                 slabel = intern("label");
                 sfn = intern("fn");
+                ssetq = intern("setq");
         }
 
         if (WordNilP(e)) {
@@ -295,6 +304,7 @@ struct Word* lisp_eval(struct interpreter* I, struct Word* e, struct Word* a) {
         }
         else if (WordAtomP(CAR(e))) {
                 if (WordAtomType(CAR(e)) == WORDATOM_FUNCTION) {
+                        I->call = e;
                         return ATOM_FUNCTION(CAR(e))(I, lisp_evlis(I, CDR(e), a), a);
                 }
                 else if (WordAtomType(CAR(e)) == WORDATOM_SYMBOL) {
@@ -336,6 +346,14 @@ struct Word* lisp_eval(struct interpreter* I, struct Word* e, struct Word* a) {
                         }
                         else if (astr == scons) {
                                 return lisp_cons(I, lisp_eval(I, CADR(e), a), lisp_eval(I, CADDR(e), a));
+                        }
+                        else if (astr == ssetq) {
+                                struct Word* v1 = CADR(e);
+                                do {
+                                        I->env = lisp_cons(I, lisp_list(I, CADR(e), lisp_eval(I, CADDR(e), a)), I->env);
+                                        e = CDDR(e);
+                                } while(!WordNilP(CDR(e)));
+                                return v1;
                         }
                         else {
                                 return lisp_eval(I, lisp_cons(I, lisp_assoc(I, CAR(e), a), CDR(e)), a);
@@ -588,6 +606,24 @@ next:
         return ret;
 }
 
+static struct Word*
+fn_macro(struct interpreter* I, struct Word* args, struct Word* env) {
+        struct Word* name;
+        struct Word* plist;
+        struct Word* body;
+        name = CAR(args);
+        plist = CADR(args);
+        body = CDDR(args);
+        printf("Defining macro: ");
+        print_atom(I, name);
+        printf("\nArgument list: ");
+        print_sexpr(I, plist);
+        printf("\nBody: ");
+        print_sexpr(I, body);
+        printf("\n");
+        return name;
+}
+
 gboolean init_interpreter(struct interpreter* I, const char* filename) {
         memset(I, 0, sizeof(struct interpreter));
         init_file_stream(&I->stream, filename);
@@ -596,9 +632,14 @@ gboolean init_interpreter(struct interpreter* I, const char* filename) {
         I->t.d.num = 1;
         I->nil.a.word = NULL;
         I->nil.d.word = NULL;
-        I->env = lisp_cons(I, lisp_list(I, lisp_symbol(I, "nil"), &I->nil), lisp_cons(I, lisp_list(I, lisp_symbol(I, "t"), &I->t), NULL));
+
+        I->env = lisp_cons(I, lisp_list(I, lisp_symbol(I, "nil"), &I->nil), lisp_cons(I, lisp_list(I, lisp_symbol(I, "t"), &I->t), &I->nil));
+
+        I->call = &I->nil;
+        I->macros = &I->nil;
 
         register_function(I, "str+", fn_strjoin);
+        register_function(I, "macro", fn_macro);
         return TRUE;
 }
 

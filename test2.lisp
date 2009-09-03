@@ -1,1 +1,4 @@
-((fn (x y) (str+ x "!!" y "?")) "hello" ", world")
+(setq really? '(fn (x y) (str+ x ", " y "?")))
+
+(really? "hello" "world")
+
