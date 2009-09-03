@@ -528,7 +528,6 @@ gboolean init_interpreter(struct interpreter* I, const char* filename) {
         I->nil.a.word = NULL;
         I->nil.d.word = NULL;
         I->env = lisp_cons(I, lisp_list(I, lisp_symbol(I, "nil"), &I->nil), lisp_cons(I, lisp_list(I, lisp_symbol(I, "t"), &I->t), NULL));
-        print_sexpr(I, I->env);
         return TRUE;
 }
 
