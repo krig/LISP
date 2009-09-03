@@ -4,3 +4,9 @@
 (macro 'def '(name args +body)
   '(list3 'setq name (list3 'fn args *body)))
 
+(macro 'def '(name args body..)
+       '(list 'setq name (list 'label name (list 'fn args *body))))
+
+(macro 'defmacro '(name args body..)
+       '(list 'macro 'name 'args (quote-all *body)))
+
