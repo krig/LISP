@@ -368,7 +368,6 @@ sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t a) {
                                  lisp_cons(I, lisp_list(I, CADAR(e), CAR(e)), a));
         }
         else if (lisp_streq(I, CAAR(e), sfn) != &I->nil) {
-                /*print_sexpr_verbose(I, e, 0);*/
                 return lisp_eval(I, CADDAR(e),
                                  lisp_append(I, lisp_pair(I, CADAR(e),
                                                           lisp_evlis(I, CDR(e), a)), a));
@@ -384,8 +383,6 @@ sexpr_t lisp_read(Lisp I);
 
 sexpr_t lisp_read_atom(Lisp I);
 sexpr_t lisp_read_list(Lisp I);
-
-int num_objects_created = 0;
 
 sexpr_t lisp_read(Lisp I) {
         int ch;
@@ -455,7 +452,6 @@ sexpr_t lisp_read_atom(Lisp I) {
                 }
                 buf[i] = 0;
                 put_char(I, ch); // rewind
-                num_objects_created++;
                 sexpr_t atom = lisp_cons(I, NULL, NULL);
                 SETATOM_NUM(atom, atoi(buf));
                 return atom;
@@ -469,7 +465,6 @@ sexpr_t lisp_read_atom(Lisp I) {
                 }
                 buf[i] = 0;
                 put_char(I, ch); // rewind
-                num_objects_created++;
                 sexpr_t atom = lisp_cons(I, NULL, NULL);
                 SETATOM_SYMBOL(atom, intern(buf));
                 return atom;
@@ -495,7 +490,6 @@ sexpr_t lisp_read_atom(Lisp I) {
                         ch = get_char(I);
                 }
                 buf[i] = 0;
-                num_objects_created++;
                 sexpr_t atom = lisp_cons(I, NULL, NULL);
                 char* str = GC_malloc(i);
                 strcpy(str, buf);
@@ -515,8 +509,6 @@ sexpr_t lisp_read_list(Lisp I) {
         if (ch != '(')
                 return NULL;
 
-        num_objects_created++;
-
         sexpr_t head = lisp_cons(I, NULL, NULL);
         sexpr_t prev = NULL;
         sexpr_t curr = head;
@@ -532,7 +524,6 @@ sexpr_t lisp_read_list(Lisp I) {
                         prev = curr;
                         put_char(I, ch);
                         SET_CAR(prev, lisp_read(I));
-                        num_objects_created++;
                         curr = lisp_cons(I, NULL, NULL);
                         SET_CDR(prev, curr);
                 }
@@ -636,7 +627,15 @@ gboolean init_interpreter(Lisp I, const char* filename) {
         I->nil.a.word = NULL;
         I->nil.d.word = NULL;
 
-        I->env = lisp_cons(I, lisp_list(I, lisp_symbol(I, "nil"), &I->nil), lisp_cons(I, lisp_list(I, lisp_symbol(I, "t"), &I->t), &I->nil));
+        I->env = lisp_cons(I,
+                           lisp_list(I,
+                                     lisp_symbol(I, "nil"),
+                                     &I->nil),
+                           lisp_cons(I,
+                                     lisp_list(I,
+                                               lisp_symbol(I, "t"),
+                                               &I->t),
+                                     &I->nil));
 
         I->call = &I->nil;
         I->macros = &I->nil;
@@ -652,9 +651,7 @@ int main(int argc, char* argv[]) {
         GC_INIT();
         init_interpreter(I, argv[1]);
 
-        num_objects_created = 0;
         sexpr_t lst = lisp_read(I);
-        /*printf("read %d objects\n", num_objects_created);*/
 
         lst = lisp_eval(I, lst, I->env);
 
