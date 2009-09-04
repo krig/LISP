@@ -6,52 +6,65 @@
 #include <gc.h>
 #include "stream.h"
 
-struct Word;
-struct interpreter;
+struct word_t;
+struct interpreter_t;
+
+typedef struct word_t* sexpr_t;
+typedef struct interpreter_t* Lisp;
 
 typedef union {
         unsigned int umask;
-        struct Word* word;
+        struct word_t* word;
 } address_t;
 
-typedef struct Word* (*ParserFunctionT)(struct interpreter*, struct Word*, struct Word*);
+typedef sexpr_t (*ParserFunctionT)(Lisp, sexpr_t, sexpr_t);
 
 typedef union {
-        struct Word* word;
+        struct word_t* word;
         int num;
         const char* str;
         ParserFunctionT fun;
 } decrement_t;
 
-struct Word {
+struct word_t {
         address_t a;
         decrement_t d;
 };
 
+struct interpreter_t {
+        struct instream stream;
+        struct word_t t;
+        struct word_t nil;
+        sexpr_t env; /* assoclist of variables */
+        sexpr_t call; /* when in a function, refers to the call form itself */
+        sexpr_t macros; /* assoclist of macros */
+};
+
+typedef enum SexprType_t {
+        T_SEXPR = 0,
+        T_NUM = 0x10,
+        T_STR = 0x20,
+        T_SYMBOL = 0x30,
+        T_FUNCTION = 0x40
+} SexprType;
+
 #define WordAtomP(w) ((w)->a.umask & 1)
 #define WordAtomType(w) ((w)->a.umask & 0xfffffff0)
-
 #define WordNilP(w) ((w) == NULL || ((w)->a.word == NULL && (w)->d.word == NULL))
 
-#define WORDATOM_WORD 0
-#define WORDATOM_NUM 0x10
-#define WORDATOM_STR 0x20
-#define WORDATOM_SYMBOL 0x30
-#define WORDATOM_FUNCTION 0x40
-
-#define ATOM_STR(w) ((WordAtomType(w)==WORDATOM_STR || WordAtomType(w)==WORDATOM_SYMBOL) ? ((w)->d.str) : NULL)
-#define ATOM_NUM(w) ((WordAtomType(w)==WORDATOM_NUM) ? ((w)->d.num) : 0)
-#define ATOM_WORD(w) ((WordAtomType(w)==WORDATOM_WORD) ? ((w)->d.word) : NULL)
-#define ATOM_FUNCTION(w) ((WordAtomType(w)==WORDATOM_FUNCTION) ? ((w)->d.fun) : NULL)
+#define ATOM_STR(w) ((WordAtomType(w)==T_STR || WordAtomType(w)==T_SYMBOL) ? ((w)->d.str) : NULL)
+#define ATOM_NUM(w) ((WordAtomType(w)==T_NUM) ? ((w)->d.num) : 0)
+#define ATOM_WORD(w) ((WordAtomType(w)==T_SEXPR) ? ((w)->d.word) : NULL)
+#define ATOM_FUNCTION(w) ((WordAtomType(w)==T_FUNCTION) ? ((w)->d.fun) : NULL)
 
 #define SetWord(w, ca, cd) do { (w)->a.word = (ca); (w)->d.word = (cd); } while (0)
 #define SetCAR(w, ca) do { (w)->a.word = (ca); } while (0)
 #define SetCDR(w, cd) do { (w)->d.word = (cd); } while (0)
-#define SetAtomWord(w, ww) do { (w)->a.umask = 1+WORDATOM_WORD; (w)->d.word = (ww); } while(0)
-#define SetAtomNum(w, n) do { (w)->a.umask = 1+WORDATOM_NUM; (w)->d.num = (n); } while(0)
-#define SetAtomStr(w, s) do { (w)->a.umask = 1+WORDATOM_STR; (w)->d.str = (s); } while(0)
-#define SetAtomSymbol(w, s) do { (w)->a.umask = 1+WORDATOM_SYMBOL; (w)->d.str = (s); } while(0)
-#define SetAtomFunction(w, f) do { (w)->a.umask = 1+WORDATOM_FUNCTION; (w)->d.fun = (f); } while(0)
+#define SetAtomWord(w, ww) do { (w)->a.umask = 1+T_SEXPR; (w)->d.word = (ww); } while(0)
+#define SetAtomNum(w, n) do { (w)->a.umask = 1+T_NUM; (w)->d.num = (n); } while(0)
+#define SetAtomStr(w, s) do { (w)->a.umask = 1+T_STR; (w)->d.str = (s); } while(0)
+#define SetAtomSymbol(w, s) do { (w)->a.umask = 1+T_SYMBOL; (w)->d.str = (s); } while(0)
+#define SetAtomFunction(w, f) do { (w)->a.umask = 1+T_FUNCTION; (w)->d.fun = (f); } while(0)
 
 #define CAR(w) ((w)->a.word)
 #define CDR(w) ((w)->d.word)
@@ -68,38 +81,29 @@ struct Word {
   output: first value whose expression evaluates to true
 */
 
-struct interpreter {
-        struct instream stream;
-        struct Word t;
-        struct Word nil;
-        struct Word* env; /* assoclist of variables */
-        struct Word* call; /* when in a function, refers to the call form itself */
-        struct Word* macros; /* assoclist of macros */
-};
-
 const char* intern(const char* str) {
         return g_intern_string(str);
 }
 
-struct Word* lisp_cons(struct interpreter* I, struct Word* a, struct Word* b);
-struct Word* lisp_list(struct interpreter* I, struct Word* a, struct Word* b);
-struct Word* lisp_symbol(struct interpreter* I, const char* symb) {
-        struct Word* ret = lisp_cons(I, NULL, NULL);
+sexpr_t lisp_cons(Lisp I, sexpr_t a, sexpr_t b);
+sexpr_t lisp_list(Lisp I, sexpr_t a, sexpr_t b);
+sexpr_t lisp_symbol(Lisp I, const char* symb) {
+        sexpr_t ret = lisp_cons(I, NULL, NULL);
         SetAtomSymbol(ret, intern(symb));
         return ret;
 }
 
-int get_char(struct interpreter* I) {
+int get_char(Lisp I) {
         return I->stream.get_char(I->stream.hstream);
 }
 
-void put_char(struct interpreter* I, int ch) {
+void put_char(Lisp I, int ch) {
         I->stream.put_char(ch, I->stream.hstream);
 }
 
-struct Word* lisp_eq(struct interpreter* I, struct Word* x, struct Word* y);
+sexpr_t lisp_eq(Lisp I, sexpr_t x, sexpr_t y);
 
-void print_atom(struct interpreter* I, struct Word* word) {
+void print_atom(Lisp I, sexpr_t word) {
         if (WordNilP(word)) {
                 printf("nil");
         }
@@ -108,17 +112,17 @@ void print_atom(struct interpreter* I, struct Word* word) {
         }
         else {
                 switch (WordAtomType(word)) {
-                case WORDATOM_WORD:
+                case T_SEXPR:
                         printf("%p", ATOM_WORD(word));
                         break;
-                case WORDATOM_NUM:
+                case T_NUM:
                         printf("%d", ATOM_NUM(word));
                         break;
-                case WORDATOM_STR:
-                case WORDATOM_SYMBOL:
+                case T_STR:
+                case T_SYMBOL:
                         printf("%s", ATOM_STR(word));
                         break;
-                case WORDATOM_FUNCTION:
+                case T_FUNCTION:
                         printf("fn#%p", ATOM_FUNCTION(word));
                         break;
                 default:
@@ -128,7 +132,7 @@ void print_atom(struct interpreter* I, struct Word* word) {
         }
 }
 
-void print_sexpr(struct interpreter* I, struct Word* word) {
+void print_sexpr(Lisp I, sexpr_t word) {
         printf("(");
 
         if (WordAtomP(CAR(word)) && WordAtomP(CDR(word))) {
@@ -160,7 +164,7 @@ void print_sexpr(struct interpreter* I, struct Word* word) {
         printf(")");
 }
 
-void print_word_struct(struct interpreter* I, struct Word* word) {
+void print_word_struct(Lisp I, sexpr_t word) {
         if (word) {
                 if (WordAtomP(word)) {
                         printf("[%p]:", word);
@@ -174,7 +178,7 @@ void print_word_struct(struct interpreter* I, struct Word* word) {
         }
 }
 
-void print_sexpr_verbose(struct interpreter* I, struct Word* word, int depth) {
+void print_sexpr_verbose(Lisp I, sexpr_t word, int depth) {
         int i;
         printf("\n");
         for (i = 0; i < depth; ++i)
@@ -207,26 +211,26 @@ void print_sexpr_verbose(struct interpreter* I, struct Word* word, int depth) {
         }
 }
 
-struct Word* lisp_eq(struct interpreter* I, struct Word* x, struct Word* y) {
+sexpr_t lisp_eq(Lisp I, sexpr_t x, sexpr_t y) {
         return (WordAtomP(x) && WordAtomP(y) && (x->d.word == y->d.word)) ? &I->t : &I->nil;
 }
-struct Word* lisp_streq(struct interpreter* I, struct Word* x, const char* s) {
+sexpr_t lisp_streq(Lisp I, sexpr_t x, const char* s) {
         return (WordAtomP(x) && (ATOM_STR(x) == s)) ? &I->t : &I->nil;
 }
 
-struct Word* lisp_eval(struct interpreter* I, struct Word* e, struct Word* a);
+sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t a);
 
-struct Word* lisp_cons(struct interpreter* I, struct Word* a, struct Word* b) {
-        struct Word* ret = GC_malloc(sizeof(struct Word));
+sexpr_t lisp_cons(Lisp I, sexpr_t a, sexpr_t b) {
+        sexpr_t ret = GC_malloc(sizeof(struct word_t));
         SetWord(ret, a, b);
         return ret;
 }
 
-struct Word* lisp_list(struct interpreter* I, struct Word* a, struct Word* b) {
+sexpr_t lisp_list(Lisp I, sexpr_t a, sexpr_t b) {
         return lisp_cons(I, a, lisp_cons(I, b, NULL));
 }
 
-struct Word* lisp_evlis(struct interpreter* I, struct Word* m, struct Word* a) {
+sexpr_t lisp_evlis(Lisp I, sexpr_t m, sexpr_t a) {
         if (WordNilP(m)) {
                 return &I->nil;
         }
@@ -235,7 +239,7 @@ struct Word* lisp_evlis(struct interpreter* I, struct Word* m, struct Word* a) {
         }
 }
 
-struct Word* lisp_assoc(struct interpreter* I, struct Word* m, struct Word* a) {
+sexpr_t lisp_assoc(Lisp I, sexpr_t m, sexpr_t a) {
 tailcall:
         if (lisp_eq(I, CAAR(a), m) != &I->nil) {
                 return CADAR(a);
@@ -247,14 +251,14 @@ tailcall:
         }
 }
 
-struct Word* lisp_append(struct interpreter* I, struct Word* x, struct Word* y) {
+sexpr_t lisp_append(Lisp I, sexpr_t x, sexpr_t y) {
         if (WordNilP(x))
                 return y;
         else
                 return lisp_cons(I, CAR(x), lisp_append(I, CDR(x), y));
 }
 
-struct Word* lisp_pair(struct interpreter* I, struct Word* x, struct Word* y) {
+sexpr_t lisp_pair(Lisp I, sexpr_t x, sexpr_t y) {
         if (WordNilP(x) && WordNilP(y)) {
                 return lisp_cons(I, NULL, NULL);
         }
@@ -267,7 +271,7 @@ struct Word* lisp_pair(struct interpreter* I, struct Word* x, struct Word* y) {
         }
 }
 
-struct Word* lisp_eval(struct interpreter* I, struct Word* e, struct Word* a) {
+sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t a) {
         static const char* squote = NULL;
         static const char* scar = NULL;
         static const char* scdr = NULL;
@@ -295,7 +299,7 @@ struct Word* lisp_eval(struct interpreter* I, struct Word* e, struct Word* a) {
         if (WordNilP(e)) {
                 return &I->nil;
         } else if (WordAtomP(e)) {
-                if (WordAtomType(e) == WORDATOM_SYMBOL) {
+                if (WordAtomType(e) == T_SYMBOL) {
                         return lisp_assoc(I, e, a);
                 }
                 else {
@@ -303,18 +307,18 @@ struct Word* lisp_eval(struct interpreter* I, struct Word* e, struct Word* a) {
                 }
         }
         else if (WordAtomP(CAR(e))) {
-                if (WordAtomType(CAR(e)) == WORDATOM_FUNCTION) {
+                if (WordAtomType(CAR(e)) == T_FUNCTION) {
                         I->call = e;
                         return ATOM_FUNCTION(CAR(e))(I, lisp_evlis(I, CDR(e), a), a);
                 }
-                else if (WordAtomType(CAR(e)) == WORDATOM_SYMBOL) {
+                else if (WordAtomType(CAR(e)) == T_SYMBOL) {
                         // todo: apply
                         const char* astr = ATOM_STR(CAR(e));
                         if (astr == squote) {
                                 return CADR(e);
                         }
                         else if (astr == satom) {
-                                struct Word* ret = lisp_eval(I, CADR(e), a);
+                                sexpr_t ret = lisp_eval(I, CADR(e), a);
                                 if (WordAtomP(ret))
                                         return ret;
                                 else
@@ -324,9 +328,9 @@ struct Word* lisp_eval(struct interpreter* I, struct Word* e, struct Word* a) {
                                 return lisp_eq(I, lisp_eval(I, CADR(e), a), lisp_eval(I, CADDR(e), a));
                         }
                         else if (astr == scond) {
-                                struct Word* c = CDR(e);
+                                sexpr_t c = CDR(e);
                                 while (!WordNilP(c)) {
-                                        struct Word* r = lisp_eval(I, CAAR(c), a);
+                                        sexpr_t r = lisp_eval(I, CAAR(c), a);
                                         if (!WordNilP(r)) {
                                                 return lisp_eval(I, CADAR(c), a);
                                         }
@@ -348,7 +352,7 @@ struct Word* lisp_eval(struct interpreter* I, struct Word* e, struct Word* a) {
                                 return lisp_cons(I, lisp_eval(I, CADR(e), a), lisp_eval(I, CADDR(e), a));
                         }
                         else if (astr == ssetq) {
-                                struct Word* v1 = CADR(e);
+                                sexpr_t v1 = CADR(e);
                                 do {
                                         I->env = lisp_cons(I, lisp_list(I, CADR(e), lisp_eval(I, CADDR(e), a)), I->env);
                                         e = CDDR(e);
@@ -377,16 +381,16 @@ struct Word* lisp_eval(struct interpreter* I, struct Word* e, struct Word* a) {
 }
 
 
-struct Word* lisp_read(struct interpreter* I);
+sexpr_t lisp_read(Lisp I);
 
-struct Word* lisp_read_atom(struct interpreter* I);
-struct Word* lisp_read_list(struct interpreter* I);
+sexpr_t lisp_read_atom(Lisp I);
+sexpr_t lisp_read_list(Lisp I);
 
 int num_objects_created = 0;
 
-struct Word* lisp_read(struct interpreter* I) {
+sexpr_t lisp_read(Lisp I) {
         int ch;
-        struct Word* ret;
+        sexpr_t ret;
         ch = get_char(I);
         while (ch) {
                 if (isspace(ch)) {
@@ -398,7 +402,7 @@ struct Word* lisp_read(struct interpreter* I) {
                 }
                 else if (ch == '\'') {
                         static const char* squote = NULL;
-                        struct Word* name;
+                        sexpr_t name;
                         if (!squote) {
                                 squote = intern("quote");
                         }
@@ -438,7 +442,7 @@ static int issymbol(int ch) {
                 (ch == '?');
 }
 
-struct Word* lisp_read_atom(struct interpreter* I) {
+sexpr_t lisp_read_atom(Lisp I) {
         int ch;
         char buf[128];
 
@@ -453,7 +457,7 @@ struct Word* lisp_read_atom(struct interpreter* I) {
                 buf[i] = 0;
                 put_char(I, ch); // rewind
                 num_objects_created++;
-                struct Word* atom = lisp_cons(I, NULL, NULL);
+                sexpr_t atom = lisp_cons(I, NULL, NULL);
                 SetAtomNum(atom, atoi(buf));
                 return atom;
         }
@@ -467,7 +471,7 @@ struct Word* lisp_read_atom(struct interpreter* I) {
                 buf[i] = 0;
                 put_char(I, ch); // rewind
                 num_objects_created++;
-                struct Word* atom = lisp_cons(I, NULL, NULL);
+                sexpr_t atom = lisp_cons(I, NULL, NULL);
                 SetAtomSymbol(atom, intern(buf));
                 return atom;
         }
@@ -493,7 +497,7 @@ struct Word* lisp_read_atom(struct interpreter* I) {
                 }
                 buf[i] = 0;
                 num_objects_created++;
-                struct Word* atom = lisp_cons(I, NULL, NULL);
+                sexpr_t atom = lisp_cons(I, NULL, NULL);
                 char* str = GC_malloc(i);
                 strcpy(str, buf);
                 SetAtomStr(atom, str);
@@ -506,7 +510,7 @@ struct Word* lisp_read_atom(struct interpreter* I) {
         }
 }
 
-struct Word* lisp_read_list(struct interpreter* I) {
+sexpr_t lisp_read_list(Lisp I) {
         int ch;
         ch = get_char(I);
         if (ch != '(')
@@ -514,9 +518,9 @@ struct Word* lisp_read_list(struct interpreter* I) {
 
         num_objects_created++;
 
-        struct Word* head = lisp_cons(I, NULL, NULL);
-        struct Word* prev = NULL;
-        struct Word* curr = head;
+        sexpr_t head = lisp_cons(I, NULL, NULL);
+        sexpr_t prev = NULL;
+        sexpr_t curr = head;
 
         ch = get_char(I);
         while (ch) {
@@ -539,7 +543,7 @@ struct Word* lisp_read_list(struct interpreter* I) {
         return head;
 }
 
-void lisp_loop(struct interpreter* I, struct Word* word) {
+void lisp_loop(Lisp I, sexpr_t word) {
         const char* STOP = intern("stop");
         while (1) {
                 if (WordNilP(word)) {
@@ -572,8 +576,8 @@ void lisp_loop(struct interpreter* I, struct Word* word) {
 }
 
 
-static void register_function(struct interpreter* I, const char* name, ParserFunctionT fun) {
-        struct Word *nm, *fn, *cs;
+static void register_function(Lisp I, const char* name, ParserFunctionT fun) {
+        sexpr_t nm, fn, cs;
         nm = lisp_cons(I, NULL, NULL);
         SetAtomStr(nm, intern(name));
         fn = lisp_cons(I, NULL, NULL);
@@ -582,9 +586,9 @@ static void register_function(struct interpreter* I, const char* name, ParserFun
         I->env = lisp_cons(I, cs, I->env);
 }
 
-static struct Word*
-fn_strjoin(struct interpreter* I, struct Word* args, struct Word* env) {
-        struct Word* ret;
+static sexpr_t
+fn_strjoin(Lisp I, sexpr_t args, sexpr_t env) {
+        sexpr_t ret;
         const char* a;
         const char* b;
         char* join;
@@ -606,11 +610,11 @@ next:
         return ret;
 }
 
-static struct Word*
-fn_macro(struct interpreter* I, struct Word* args, struct Word* env) {
-        struct Word* name;
-        struct Word* plist;
-        struct Word* body;
+static sexpr_t
+fn_macro(Lisp I, sexpr_t args, sexpr_t env) {
+        sexpr_t name;
+        sexpr_t plist;
+        sexpr_t body;
         name = CAR(args);
         plist = CADR(args);
         body = CDDR(args);
@@ -624,8 +628,8 @@ fn_macro(struct interpreter* I, struct Word* args, struct Word* env) {
         return name;
 }
 
-gboolean init_interpreter(struct interpreter* I, const char* filename) {
-        memset(I, 0, sizeof(struct interpreter));
+gboolean init_interpreter(Lisp I, const char* filename) {
+        memset(I, 0, sizeof(struct interpreter_t));
         init_file_stream(&I->stream, filename);
         /* set env to () */
         I->t.a.umask = 1;
@@ -644,13 +648,13 @@ gboolean init_interpreter(struct interpreter* I, const char* filename) {
 }
 
 int main(int argc, char* argv[]) {
-        struct interpreter i;
-        struct interpreter* I = &i;
+        struct interpreter_t i;
+        Lisp I = &i;
         GC_INIT();
         init_interpreter(I, argv[1]);
 
         num_objects_created = 0;
-        struct Word* lst = lisp_read(I);
+        sexpr_t lst = lisp_read(I);
         /*printf("read %d objects\n", num_objects_created);*/
 
         lst = lisp_eval(I, lst, I->env);
