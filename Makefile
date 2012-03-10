@@ -1,11 +1,8 @@
-glib_cflags = `pkg-config --cflags glib-2.0`
-glib_libs = `pkg-config --libs glib-2.0`
-
-CC=gcc
-CFLAGS=-Wall -Werror -g -std=c99 $(glib_cflags) -I/usr/include/gc
+CC:=gcc
+CFLAGS:=-Wall -Werror -g -std=c99 -isystem /usr/local/include
 DEPS = stream.h
 OBJ = main.o stream.o
-LIBS = -lgc $(glib_libs)
+LIBS = -lgc
 
 
 %.o: %.c $(DEPS)

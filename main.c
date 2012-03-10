@@ -1,10 +1,16 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <glib.h>
 #include <ctype.h>
 #include <gc.h>
 #include "stream.h"
+
+#ifndef TRUE
+#define TRUE 1
+#endif
+#ifndef FALSE
+#define FALSE 0
+#endif
 
 struct word_t;
 struct interpreter_t;
@@ -80,8 +86,68 @@ typedef enum SexprType_t {
   output: first value whose expression evaluates to true
 */
 
+/* PJW hash (Aho, Sethi, and Ullman pp. 434-438) */
+unsigned hash_string(const char* str) {
+    unsigned h = 0, g;
+    for (; *str; ++str) {
+        // The top 4 bits of h are all zero
+        h = (h << 4) + (unsigned)*str;               // shift h 4 bits left, add in ki
+        g = h & 0xf0000000;              // get the top 4 bits of h
+        if (g != 0) {                     // if the top 4 bits aren't zero,
+            h = h ^ (g >> 24);        //   move them to the low end of h
+            h = h ^ g;
+        }
+    }
+    // The top 4 bits of h are again all zero
+    return h;
+}
+
+struct hashbucket_t {
+    unsigned value;
+    const char* str;
+    struct hashbucket_t* next;
+};
+
+#define NBUCKETS 1023
+struct hashbucket_t buckets[NBUCKETS];
+
+void init_interned() {
+    for (int i = 0; i < NBUCKETS; ++i) {
+        buckets[i].value = 0;
+        buckets[i].str = NULL;
+        buckets[i].next = NULL;
+    }
+}
+
+const char* gc_strdup(const char* str) {
+    int len = strlen(str);
+    char* buf = GC_malloc(len+1);
+    memcpy(buf, str, len+1);
+    return buf;
+}
+
 const char* intern(const char* str) {
-        return g_intern_string(str);
+    struct hashbucket_t* b = NULL;
+    unsigned h = hash_string(str);
+
+    b = buckets + (h%NBUCKETS);
+
+    if (b->str == NULL) {
+        b->value = h;
+        b->str = gc_strdup(str);
+    }
+    else {
+        while (b->value != h && b->next != NULL)
+            b = b->next;
+        if (b->value != h) {
+            b->next = GC_malloc(sizeof(struct hashbucket_t));
+            b = b->next;
+            b->value = h;
+            b->str = gc_strdup(str);
+            b->next = NULL;
+        }
+    }
+    return b->str;
 }
 
 sexpr_t lisp_cons(Lisp I, sexpr_t a, sexpr_t b);
@@ -618,7 +684,7 @@ fn_macro(Lisp I, sexpr_t args, sexpr_t env) {
         return name;
 }
 
-gboolean init_interpreter(Lisp I, const char* filename) {
+int init_interpreter(Lisp I, const char* filename) {
         memset(I, 0, sizeof(struct interpreter_t));
         init_file_stream(&I->stream, filename);
         /* set env to () */
@@ -646,9 +712,16 @@ gboolean init_interpreter(Lisp I, const char* filename) {
 }
 
 int main(int argc, char* argv[]) {
+        init_interned();
         struct interpreter_t i;
         Lisp I = &i;
         GC_INIT();
+
+        if (argc != 2) {
+            printf("Usage: %s FILE\n", argv[0]);
+            exit(1);
+        }
+
         init_interpreter(I, argv[1]);
 
         sexpr_t lst = lisp_read(I);
