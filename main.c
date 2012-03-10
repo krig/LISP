@@ -202,7 +202,7 @@ void print_sexpr(Lisp I, sexpr_t word) {
                 print_atom(I, CDR(word));
         }
         else {
-                while (1) {
+                while (TRUE) {
                         if (NILP(CAR(word))) {
                                 printf("nil");
                         }
@@ -254,7 +254,7 @@ void print_sexpr_verbose(Lisp I, sexpr_t word, int depth) {
                 printf(" ");
         }
         else {
-                while (1) {
+                while (TRUE) {
                         print_word_struct(I, word);
                         printf("(");
 
@@ -279,7 +279,7 @@ sexpr_t lisp_streq(Lisp I, sexpr_t x, const char* s) {
         return (ATOMP(x) && (ATOM2STR(x) == s)) ? &I->t : &I->nil;
 }
 
-sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t a);
+sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t env);
 
 sexpr_t lisp_cons(Lisp I, sexpr_t a, sexpr_t b) {
         sexpr_t ret = GC_malloc(sizeof(struct word_t));
@@ -291,24 +291,26 @@ sexpr_t lisp_list(Lisp I, sexpr_t a, sexpr_t b) {
         return lisp_cons(I, a, lisp_cons(I, b, NULL));
 }
 
-sexpr_t lisp_evlis(Lisp I, sexpr_t m, sexpr_t a) {
+sexpr_t lisp_evlis(Lisp I, sexpr_t m, sexpr_t env) {
         if (NILP(m)) {
                 return &I->nil;
         }
         else {
-                return lisp_cons(I, lisp_eval(I, CAR(m), a), lisp_evlis(I, CDR(m), a));
+                return lisp_cons(I, lisp_eval(I, CAR(m), env), lisp_evlis(I, CDR(m), env));
         }
 }
 
 sexpr_t lisp_assoc(Lisp I, sexpr_t m, sexpr_t a) {
-tailcall:
-        if (lisp_eq(I, CAAR(a), m) != &I->nil) {
-                return CADAR(a);
-        }
-        else {
+        while (TRUE) {
+                if (a == &I->nil) {
+                        printf("Unbound symbol: ");
+                        print_atom(I, m);
+                        puts("");
+                        return a;
+                }
+                else if (lisp_eq(I, CAAR(a), m) != &I->nil)
+                        return CADAR(a);
                 a = CDR(a);
-                goto tailcall;
-                /*return lisp_assoc(I, m, CDR(a));*/
         }
 }
 
@@ -332,7 +334,7 @@ sexpr_t lisp_pair(Lisp I, sexpr_t x, sexpr_t y) {
         }
 }
 
-sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t a) {
+sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t env) {
         static const char* squote = NULL;
         static const char* scar = NULL;
         static const char* scdr = NULL;
@@ -361,7 +363,7 @@ sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t a) {
                 return &I->nil;
         } else if (ATOMP(e)) {
                 if (ATOMTYPE(e) == T_SYMBOL) {
-                        return lisp_assoc(I, e, a);
+                        return lisp_assoc(I, e, env);
                 }
                 else {
                         return e;
@@ -370,7 +372,7 @@ sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t a) {
         else if (ATOMP(CAR(e))) {
                 if (ATOMTYPE(CAR(e)) == T_FUNCTION) {
                         I->call = e;
-                        return ATOM2FN(CAR(e))(I, lisp_evlis(I, CDR(e), a), a);
+                        return ATOM2FN(CAR(e))(I, lisp_evlis(I, CDR(e), env), env);
                 }
                 else if (ATOMTYPE(CAR(e)) == T_SYMBOL) {
                         // todo: apply
@@ -379,21 +381,21 @@ sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t a) {
                                 return CADR(e);
                         }
                         else if (astr == satom) {
-                                sexpr_t ret = lisp_eval(I, CADR(e), a);
+                                sexpr_t ret = lisp_eval(I, CADR(e), env);
                                 if (ATOMP(ret))
                                         return ret;
                                 else
                                         return &I->nil;
                         }
                         else if (astr == seq) {
-                                return lisp_eq(I, lisp_eval(I, CADR(e), a), lisp_eval(I, CADDR(e), a));
+                                return lisp_eq(I, lisp_eval(I, CADR(e), env), lisp_eval(I, CADDR(e), env));
                         }
                         else if (astr == scond) {
                                 sexpr_t c = CDR(e);
                                 while (!NILP(c)) {
-                                        sexpr_t r = lisp_eval(I, CAAR(c), a);
+                                        sexpr_t r = lisp_eval(I, CAAR(c), env);
                                         if (!NILP(r)) {
-                                                return lisp_eval(I, CADAR(c), a);
+                                                return lisp_eval(I, CADAR(c), env);
                                         }
                                         else {
                                                 c = CDR(c);
@@ -404,35 +406,35 @@ sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t a) {
                                 return &I->nil;
                         }
                         else if (astr == scar) {
-                                return CAR(lisp_eval(I, CADR(e), a));
+                                return CAR(lisp_eval(I, CADR(e), env));
                         }
                         else if (astr == scdr) {
-                                return CDR(lisp_eval(I, CADR(e), a));
+                                return CDR(lisp_eval(I, CADR(e), env));
                         }
                         else if (astr == scons) {
-                                return lisp_cons(I, lisp_eval(I, CADR(e), a), lisp_eval(I, CADDR(e), a));
+                                return lisp_cons(I, lisp_eval(I, CADR(e), env), lisp_eval(I, CADDR(e), env));
                         }
                         else if (astr == ssetq) {
                                 sexpr_t v1 = CADR(e);
                                 do {
-                                        I->env = lisp_cons(I, lisp_list(I, CADR(e), lisp_eval(I, CADDR(e), a)), I->env);
+                                        I->env = lisp_cons(I, lisp_list(I, CADR(e), lisp_eval(I, CADDR(e), env)), I->env);
                                         e = CDDR(e);
                                 } while(!NILP(CDR(e)));
                                 return v1;
                         }
                         else {
-                                return lisp_eval(I, lisp_cons(I, lisp_assoc(I, CAR(e), a), CDR(e)), a);
+                                return lisp_eval(I, lisp_cons(I, lisp_assoc(I, CAR(e), env), CDR(e)), env);
                         }
                 }
         }
         else if (lisp_streq(I, CAAR(e), slabel) != &I->nil) {
                 return lisp_eval(I, lisp_cons(I, CADDAR(e), CDR(e)),
-                                 lisp_cons(I, lisp_list(I, CADAR(e), CAR(e)), a));
+                                 lisp_cons(I, lisp_list(I, CADAR(e), CAR(e)), env));
         }
         else if (lisp_streq(I, CAAR(e), sfn) != &I->nil) {
                 return lisp_eval(I, CADDAR(e),
                                  lisp_append(I, lisp_pair(I, CADAR(e),
-                                                          lisp_evlis(I, CDR(e), a)), a));
+                                                          lisp_evlis(I, CDR(e), env)), env));
         }
 
         printf("Eval error:");
@@ -672,7 +674,8 @@ fn_macro(Lisp I, sexpr_t args, sexpr_t env) {
 
 int init_interpreter(Lisp I, const char* filename) {
         memset(I, 0, sizeof(struct interpreter_t));
-        init_file_stream(&I->stream, filename);
+        if (init_file_stream(&I->stream, filename) == 0)
+                return FALSE;
         /* set env to () */
         I->t.a.umask = 1;
         I->t.d.num = 1;
@@ -698,17 +701,22 @@ int init_interpreter(Lisp I, const char* filename) {
 }
 
 int main(int argc, char* argv[]) {
-        init_interned();
-        struct interpreter_t i;
-        Lisp I = &i;
         GC_INIT();
 
+        init_interned();
+
+        struct interpreter_t i;
+        Lisp I = &i;
+
         if (argc != 2) {
-            printf("Usage: %s FILE\n", argv[0]);
-            exit(1);
+                printf("Usage: %s FILE\n", argv[0]);
+                exit(1);
         }
 
-        init_interpreter(I, argv[1]);
+        if (init_interpreter(I, argv[1]) == FALSE) {
+                printf("Error reading %s\n", argv[1]);
+                exit(1);
+        }
 
         sexpr_t lst = lisp_read(I);
 
