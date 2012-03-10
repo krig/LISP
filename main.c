@@ -1,3 +1,4 @@
+/* -*- c-basic-offset: 8 -*- */
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -86,68 +87,63 @@ typedef enum SexprType_t {
   output: first value whose expression evaluates to true
 */
 
-/* PJW hash (Aho, Sethi, and Ullman pp. 434-438) */
+/* djb2 hash algorithm */
 unsigned hash_string(const char* str) {
-    unsigned h = 0, g;
-    for (; *str; ++str) {
-        // The top 4 bits of h are all zero
-        h = (h << 4) + (unsigned)*str;               // shift h 4 bits left, add in ki
-        g = h & 0xf0000000;              // get the top 4 bits of h
-        if (g != 0) {                     // if the top 4 bits aren't zero,
-            h = h ^ (g >> 24);        //   move them to the low end of h
-            h = h ^ g;
-        }
-    }
-    // The top 4 bits of h are again all zero
-    return h;
+        unsigned long hash = 5381;
+        int c;
+        while ((c = *str++))
+                hash = hash * 33 + c;
+        return hash;
 }
 
 struct hashbucket_t {
-    unsigned value;
-    const char* str;
-    struct hashbucket_t* next;
+        unsigned value;
+        const char* str;
+        struct hashbucket_t* next;
 };
 
 #define NBUCKETS 1023
 struct hashbucket_t buckets[NBUCKETS];
 
 void init_interned() {
-    for (int i = 0; i < NBUCKETS; ++i) {
-        buckets[i].value = 0;
-        buckets[i].str = NULL;
-        buckets[i].next = NULL;
-    }
+        for (int i = 0; i < NBUCKETS; ++i) {
+                buckets[i].value = 0xFFFFFFFF;
+                buckets[i].str = "";
+                buckets[i].next = NULL;
+        }
 }
 
 const char* gc_strdup(const char* str) {
-    int len = strlen(str);
-    char* buf = GC_malloc(len+1);
-    memcpy(buf, str, len+1);
-    return buf;
+        int len = strlen(str);
+        char* buf = GC_malloc(len+1);
+        memcpy(buf, str, len+1);
+	    return buf;
 }
 
 const char* intern(const char* str) {
-    struct hashbucket_t* b = NULL;
-    unsigned h = hash_string(str);
+        struct hashbucket_t* b = NULL;
+        unsigned h = hash_string(str);
 
-    b = buckets + (h%NBUCKETS);
+        b = buckets + (h%NBUCKETS);
 
-    if (b->str == NULL) {
-        b->value = h;
-        b->str = gc_strdup(str);
-    }
-    else {
-        while (b->value != h && b->next != NULL)
-            b = b->next;
-        if (b->value != h) {
-            b->next = GC_malloc(sizeof(struct hashbucket_t));
-            b = b->next;
-            b->value = h;
-            b->str = gc_strdup(str);
-            b->next = NULL;
+        if (b->value == h) {
+                return b->str;
+        } else if (b->str == NULL) {
+                b->value = h;
+                b->str = gc_strdup(str);
         }
-    }
-    return b->str;
+        else {
+                while (b->value != h && b->next != NULL)
+                        b = b->next;
+                if (b->value != h) {
+                        b->next = GC_malloc(sizeof(struct hashbucket_t));
+                        b = b->next;
+                        b->value = h;
+                        b->str = gc_strdup(str);
+                        b->next = NULL;
+                }
+        }
+        return b->str;
 }
 
 sexpr_t lisp_cons(Lisp I, sexpr_t a, sexpr_t b);
@@ -159,11 +155,11 @@ sexpr_t lisp_symbol(Lisp I, const char* symb) {
 }
 
 int get_char(Lisp I) {
-        return I->stream.get_char(I->stream.hstream);
+        return I->stream.get_char(&I->stream);
 }
 
 void put_char(Lisp I, int ch) {
-        I->stream.put_char(ch, I->stream.hstream);
+        I->stream.put_char(&I->stream, ch);
 }
 
 sexpr_t lisp_eq(Lisp I, sexpr_t x, sexpr_t y);
@@ -604,30 +600,20 @@ void lisp_loop(Lisp I, sexpr_t word) {
         while (1) {
                 if (NILP(word)) {
                         print_atom(I, word);
-                        puts("");
-                        word = lisp_read(I);
-                        if (word == NULL)
-                                return;
-                        word = lisp_eval(I, word, I->env);
                 }
                 else if (ATOMP(word)) {
                         if (ATOM2STR(word) == STOP)
                                 return;
                         print_atom(I, word);
-                        puts("");
-                        word = lisp_read(I);
-                        if (word == NULL)
-                                return;
-                        word = lisp_eval(I, word, I->env);
                 }
                 else {
                         print_sexpr(I, word);
-                        puts("");
-                        word = lisp_read(I);
-                        if (word == NULL)
-                                return;
-                        word = lisp_eval(I, word, I->env);
                 }
+                puts("");
+                word = lisp_read(I);
+                if (word == NULL)
+                    return;
+                word = lisp_eval(I, word, I->env);
         }
 }
 
@@ -732,5 +718,6 @@ int main(int argc, char* argv[]) {
         lisp_loop(I, lst);
 
         printf("\n");
+        I->stream.close_stream(&I->stream);
         return 0;
 }
