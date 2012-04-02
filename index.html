@@ -1,0 +1,157 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>LISP by krig</title>
+    
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <script src="javascripts/scale.fix.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>LISP</h1>
+        <p>My attempt at implementing the original LISP paper while learning lisp. Nothing special, mostly posted as a homage to McCarthy.</p>
+        <p class="view"><a href="https://github.com/krig/LISP">View the Project on GitHub <small>krig/LISP</small></a></p>
+        <ul>
+          <li><a href="https://github.com/krig/LISP/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/krig/LISP/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/krig/LISP">Fork On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <h3>LISP</h3>
+
+<p>The original paper on LISP, written by John McCarthy in 1960 and available <a href="http://www-formal.stanford.edu/jmc/recursive.html">here</a>, specifies the basic rules of Lisp in a very clear and readable way. It is almost impossible to read the paper and not get the urge to try implementing it yourself. That's what I've done in this repository.</p>
+
+<h3>Rationale</h3>
+
+<p>This is not intended to be a usable or interesting programming language. It is an exploration of the roots of Lisp. My purpose with publishing it is primarily as a homage and exercise.</p>
+
+<h3>eval</h3>
+
+<p>Here is the complete <code>eval</code> function:</p>
+
+<pre><code>sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t env) {
+  static const char* squote = NULL;
+  static const char* scar = NULL;
+  static const char* scdr = NULL;
+  static const char* satom = NULL;
+  static const char* scond = NULL;
+  static const char* scons = NULL;
+  static const char* seq = NULL;
+  static const char* slabel = NULL;
+  static const char* sfn = NULL;
+  static const char* ssetq = NULL;
+
+  if (squote == NULL) {
+    squote = intern("quote");
+    scar = intern("car");
+    scdr = intern("cdr");
+    satom = intern("atom");
+    scond = intern("cond");
+    scons = intern("cons");
+    seq = intern("eq");
+    slabel = intern("label");
+    sfn = intern("fn");
+    ssetq = intern("setq");
+  }
+
+  if (NILP(e)) {
+    return &amp;I-&gt;nil;
+  } else if (ATOMP(e)) {
+    if (ATOMTYPE(e) == T_SYMBOL) {
+      return lisp_assoc(I, e, env);
+    }
+    else {
+      return e;
+    }
+  }
+  else if (ATOMP(CAR(e))) {
+    if (ATOMTYPE(CAR(e)) == T_FUNCTION) {
+      I-&gt;call = e;
+      return ATOM2FN(CAR(e))(I, lisp_evlis(I, CDR(e), env), env);
+    }
+    else if (ATOMTYPE(CAR(e)) == T_SYMBOL) {
+      // todo: apply
+      const char* astr = ATOM2STR(CAR(e));
+      if (astr == squote) {
+        return CADR(e);
+      }
+      else if (astr == satom) {
+        sexpr_t ret = lisp_eval(I, CADR(e), env);
+        if (ATOMP(ret))
+          return ret;
+        else
+          return &amp;I-&gt;nil;
+      }
+      else if (astr == seq) {
+        return lisp_eq(I, lisp_eval(I, CADR(e), env), lisp_eval(I, CADDR(e), env));
+      }
+      else if (astr == scond) {
+        sexpr_t c = CDR(e);
+        while (!NILP(c)) {
+          sexpr_t r = lisp_eval(I, CAAR(c), env);
+          if (!NILP(r)) {
+            return lisp_eval(I, CADAR(c), env);
+          }
+          else {
+            c = CDR(c);
+          }
+        }
+        printf("Cond error:");
+        print_sexpr(I, e);
+        return &amp;I-&gt;nil;
+      }
+      else if (astr == scar) {
+        return CAR(lisp_eval(I, CADR(e), env));
+      }
+      else if (astr == scdr) {
+        return CDR(lisp_eval(I, CADR(e), env));
+      }
+      else if (astr == scons) {
+        return lisp_cons(I, lisp_eval(I, CADR(e), env), lisp_eval(I, CADDR(e), env));
+      }
+      else if (astr == ssetq) {
+        sexpr_t v1 = CADR(e);
+        do {
+          I-&gt;env = lisp_cons(I, lisp_list(I, CADR(e), lisp_eval(I, CADDR(e), env)), I-&gt;env);
+          e = CDDR(e);
+        } while(!NILP(CDR(e)));
+        return v1;
+      }
+      else {
+        return lisp_eval(I, lisp_cons(I, lisp_assoc(I, CAR(e), env), CDR(e)), env);
+      }
+    }
+  }
+  else if (lisp_streq(I, CAAR(e), slabel) != &amp;I-&gt;nil) {
+    return lisp_eval(I, lisp_cons(I, CADDAR(e), CDR(e)),
+                     lisp_cons(I, lisp_list(I, CADAR(e), CAR(e)), env));
+  }
+  else if (lisp_streq(I, CAAR(e), sfn) != &amp;I-&gt;nil) {
+    return lisp_eval(I, CADDAR(e),
+                     lisp_append(I, lisp_pair(I, CADAR(e),
+                                              lisp_evlis(I, CDR(e), env)), env));
+  }
+
+  printf("Eval error:");
+  print_sexpr(I, e);
+  return &amp;I-&gt;nil;
+}
+</code></pre>
+      </section>
+      <footer>
+        <p>This project is maintained by <a href="https://github.com/krig">krig</a></p>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+      </footer>
+    </div>
+    <!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+  </body>
+</html>
