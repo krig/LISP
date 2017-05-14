@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/krig/LISP.svg?branch=master)](https://travis-ci.org/krig/LISP)
+
 My attempt to implement an interpreter for the original LISP.
 
 DEPENDENCIES
