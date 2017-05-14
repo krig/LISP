@@ -437,6 +437,7 @@ sexpr_t lisp_read_list(Lisp I);
 sexpr_t lisp_read(Lisp I) {
         int ch;
         sexpr_t ret;
+        ret = NULL;
         ch = get_char(I);
         while (ch) {
                 if (isspace(ch)) {
