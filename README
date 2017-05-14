@@ -1,5 +1,10 @@
 My attempt to implement an interpreter for the original LISP.
 
+DEPENDENCIES
+
+* A C99-compatible compiler
+* libgc (boehm gc)
+
 PRIMITIVES:
 
 x = atom
