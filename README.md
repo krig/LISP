@@ -1,14 +1,17 @@
+# a humble LISP
+
 [![Build Status](https://travis-ci.org/krig/LISP.svg?branch=master)](https://travis-ci.org/krig/LISP)
 
 My attempt to implement an interpreter for the original LISP.
 
-DEPENDENCIES
+## DEPENDENCIES
 
 * A C99-compatible compiler
 * libgc (boehm gc)
 
-PRIMITIVES:
+## PRIMITIVES
 
+```
 x = atom
 (x . y) = s-expression
 (atom x) -> t IF x is an atom
@@ -110,4 +113,4 @@ occurrences of the atomic symbol y in the sexpr z"
       ((atom (car e))
        (cond
          ((eq (car e) 'quote) 
-
+```
