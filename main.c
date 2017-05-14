@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-#include <gc.h>
 #include "stream.h"
 
 #ifndef TRUE
@@ -96,6 +95,16 @@ typedef enum SexprType_t {
   input: list of expressions and associated values
   output: first value whose expression evaluates to true
 */
+
+#if USE_LIBGC
+#include <gc.h>
+#else
+static inline void* GC_malloc(size_t len) {
+	return malloc(len);
+}
+static inline void GC_INIT() {
+}
+#endif
 
 /* djb2 hash algorithm */
 unsigned hash_string(const char* str) {

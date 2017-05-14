@@ -1,10 +1,7 @@
 dist: trusty
 sudo: false
 language: c
-before_install:
-- sudo apt-get update -qq
-- sudo apt-get install -qq libgc-dev
-script: make
+script: make USE_LIBGC=0
 compiler:
   - clang
   - gcc
