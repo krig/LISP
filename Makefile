@@ -8,10 +8,10 @@ LIBS = -lgc
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-main: $(OBJ)
+LISP: $(OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) $(LIBS)
 
 .PHONY: clean
 
 clean:
-	rm -f main $(OBJ)
+	rm -f LISP $(OBJ)
