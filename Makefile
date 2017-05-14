@@ -18,7 +18,11 @@ endif
 LISP: $(OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) $(LIBS) $(GCFLAGS)
 
-.PHONY: clean
+.PHONY: clean test
+
+test: LISP
+	./LISP test.lisp
+	./LISP test2.lisp
 
 clean:
 	rm -f LISP $(OBJ)

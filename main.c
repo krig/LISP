@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*- */
 #include <stdlib.h>
 #include <stdio.h>
+#include <stddef.h>
 #include <string.h>
 #include <ctype.h>
 #include "stream.h"
@@ -99,11 +100,8 @@ typedef enum SexprType_t {
 #if USE_LIBGC
 #include <gc.h>
 #else
-static inline void* GC_malloc(size_t len) {
-	return malloc(len);
-}
-static inline void GC_INIT() {
-}
+void GC_INIT();
+void* GC_malloc(size_t len);
 #endif
 
 /* djb2 hash algorithm */
@@ -116,7 +114,6 @@ unsigned hash_string(const char* str) {
 }
 
 struct hashbucket_t {
-        unsigned value;
         const char* str;
         struct hashbucket_t* next;
 };
@@ -126,8 +123,7 @@ struct hashbucket_t buckets[NBUCKETS];
 
 void init_interned() {
         for (int i = 0; i < NBUCKETS; ++i) {
-                buckets[i].value = 0xFFFFFFFF;
-                buckets[i].str = "";
+                buckets[i].str = NULL;
                 buckets[i].next = NULL;
         }
 }
@@ -136,33 +132,32 @@ const char* gc_strdup(const char* str) {
         int len = strlen(str);
         char* buf = GC_malloc(len+1);
         memcpy(buf, str, len+1);
-	    return buf;
+        return buf;
 }
 
 const char* intern(const char* str) {
         struct hashbucket_t* b = NULL;
+        struct hashbucket_t* b2 = NULL;
         unsigned h = hash_string(str);
 
         b = buckets + (h%NBUCKETS);
 
-        if (b->value == h) {
-                return b->str;
-        } else if (b->str == NULL) {
-                b->value = h;
+        if (b->str == NULL) {
                 b->str = gc_strdup(str);
+                return b->str;
         }
-        else {
-                while (b->value != h && b->next != NULL)
-                        b = b->next;
-                if (b->value != h) {
-                        b->next = GC_malloc(sizeof(struct hashbucket_t));
-                        b = b->next;
-                        b->value = h;
-                        b->str = gc_strdup(str);
-                        b->next = NULL;
-                }
+	if (strcmp(b->str, str) == 0)
+		return b->str;
+        while (b->next != NULL) {
+                if (strcmp(b->str, str) == 0)
+                        return b->str;
+                b = b->next;
         }
-        return b->str;
+        b2 = GC_malloc(sizeof(struct hashbucket_t));
+        b2->next = NULL;
+        b2->str = gc_strdup(str);
+        b->next = b2;
+        return b2->str;
 }
 
 sexpr_t lisp_cons(Lisp I, sexpr_t a, sexpr_t b);
@@ -671,16 +666,16 @@ fn_macro(Lisp I, sexpr_t args, sexpr_t env) {
 int init_interpreter(Lisp I, const char* filename) {
         memset(I, 0, sizeof(struct interpreter_t));
 
-	I->squote = intern("quote");
-	I->scar = intern("car");
-	I->scdr = intern("cdr");
-	I->satom = intern("atom");
-	I->scond = intern("cond");
-	I->scons = intern("cons");
-	I->seq = intern("eq");
-	I->slabel = intern("label");
-	I->sfn = intern("fn");
-	I->ssetq = intern("setq");
+        I->squote = intern("quote");
+        I->scar = intern("car");
+        I->scdr = intern("cdr");
+        I->satom = intern("atom");
+        I->scond = intern("cond");
+        I->scons = intern("cons");
+        I->seq = intern("eq");
+        I->slabel = intern("label");
+        I->sfn = intern("fn");
+        I->ssetq = intern("setq");
 
         if (init_file_stream(&I->stream, filename) == 0)
                 return FALSE;
@@ -737,3 +732,30 @@ int main(int argc, char* argv[]) {
         I->stream.close_stream(&I->stream);
         return 0;
 }
+
+#if USE_LIBGC == 0
+
+typedef unsigned char u8;
+static size_t _gc_size = 0;
+static size_t _gc_free = 0;
+static u8* _gc_heap = 0;
+
+void GC_INIT() {
+        _gc_size = 64*1024;
+        _gc_free = 64*1024;
+        _gc_heap = (u8*)malloc(_gc_size);
+        memset(_gc_heap, 0, _gc_size);
+        printf("inited heap with 64k\n");
+}
+
+void* GC_malloc(size_t len) {
+        len = (len + (0x10 - 1)) & -0x10;
+        if (len > _gc_free) {
+                fprintf(stderr, "heap exhaustion, compile with GC support\n");
+                abort();
+        }
+        _gc_free -= len;
+        return _gc_heap + _gc_free;
+}
+
+#endif

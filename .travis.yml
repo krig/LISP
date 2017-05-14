@@ -1,7 +1,7 @@
 dist: trusty
 sudo: false
 language: c
-script: make USE_LIBGC=0
+script: make USE_LIBGC=0 && make test
 compiler:
   - clang
   - gcc
