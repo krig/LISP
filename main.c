@@ -44,6 +44,16 @@ struct interpreter_t {
         sexpr_t env; /* assoclist of variables */
         sexpr_t call; /* when in a function, refers to the call form itself */
         sexpr_t macros; /* assoclist of macros */
+        const char* squote;
+        const char* scar;
+        const char* scdr;
+        const char* satom;
+        const char* scond;
+        const char* scons;
+        const char* seq;
+        const char* slabel;
+        const char* sfn;
+        const char* ssetq;
 };
 
 typedef enum SexprType_t {
@@ -335,30 +345,6 @@ sexpr_t lisp_pair(Lisp I, sexpr_t x, sexpr_t y) {
 }
 
 sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t env) {
-        static const char* squote = NULL;
-        static const char* scar = NULL;
-        static const char* scdr = NULL;
-        static const char* satom = NULL;
-        static const char* scond = NULL;
-        static const char* scons = NULL;
-        static const char* seq = NULL;
-        static const char* slabel = NULL;
-        static const char* sfn = NULL;
-        static const char* ssetq = NULL;
-
-        if (squote == NULL) {
-                squote = intern("quote");
-                scar = intern("car");
-                scdr = intern("cdr");
-                satom = intern("atom");
-                scond = intern("cond");
-                scons = intern("cons");
-                seq = intern("eq");
-                slabel = intern("label");
-                sfn = intern("fn");
-                ssetq = intern("setq");
-        }
-
         if (NILP(e)) {
                 return &I->nil;
         } else if (ATOMP(e)) {
@@ -377,20 +363,20 @@ sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t env) {
                 else if (ATOMTYPE(CAR(e)) == T_SYMBOL) {
                         // todo: apply
                         const char* astr = ATOM2STR(CAR(e));
-                        if (astr == squote) {
+                        if (astr == I->squote) {
                                 return CADR(e);
                         }
-                        else if (astr == satom) {
+                        else if (astr == I->satom) {
                                 sexpr_t ret = lisp_eval(I, CADR(e), env);
                                 if (ATOMP(ret))
                                         return ret;
                                 else
                                         return &I->nil;
                         }
-                        else if (astr == seq) {
+                        else if (astr == I->seq) {
                                 return lisp_eq(I, lisp_eval(I, CADR(e), env), lisp_eval(I, CADDR(e), env));
                         }
-                        else if (astr == scond) {
+                        else if (astr == I->scond) {
                                 sexpr_t c = CDR(e);
                                 while (!NILP(c)) {
                                         sexpr_t r = lisp_eval(I, CAAR(c), env);
@@ -405,16 +391,16 @@ sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t env) {
                                 print_sexpr(I, e);
                                 return &I->nil;
                         }
-                        else if (astr == scar) {
+                        else if (astr == I->scar) {
                                 return CAR(lisp_eval(I, CADR(e), env));
                         }
-                        else if (astr == scdr) {
+                        else if (astr == I->scdr) {
                                 return CDR(lisp_eval(I, CADR(e), env));
                         }
-                        else if (astr == scons) {
+                        else if (astr == I->scons) {
                                 return lisp_cons(I, lisp_eval(I, CADR(e), env), lisp_eval(I, CADDR(e), env));
                         }
-                        else if (astr == ssetq) {
+                        else if (astr == I->ssetq) {
                                 sexpr_t v1 = CADR(e);
                                 do {
                                         I->env = lisp_cons(I, lisp_list(I, CADR(e), lisp_eval(I, CADDR(e), env)), I->env);
@@ -427,11 +413,11 @@ sexpr_t lisp_eval(Lisp I, sexpr_t e, sexpr_t env) {
                         }
                 }
         }
-        else if (lisp_streq(I, CAAR(e), slabel) != &I->nil) {
+        else if (lisp_streq(I, CAAR(e), I->slabel) != &I->nil) {
                 return lisp_eval(I, lisp_cons(I, CADDAR(e), CDR(e)),
                                  lisp_cons(I, lisp_list(I, CADAR(e), CAR(e)), env));
         }
-        else if (lisp_streq(I, CAAR(e), sfn) != &I->nil) {
+        else if (lisp_streq(I, CAAR(e), I->sfn) != &I->nil) {
                 return lisp_eval(I, CADDAR(e),
                                  lisp_append(I, lisp_pair(I, CADAR(e),
                                                           lisp_evlis(I, CDR(e), env)), env));
@@ -674,6 +660,18 @@ fn_macro(Lisp I, sexpr_t args, sexpr_t env) {
 
 int init_interpreter(Lisp I, const char* filename) {
         memset(I, 0, sizeof(struct interpreter_t));
+
+	I->squote = intern("quote");
+	I->scar = intern("car");
+	I->scdr = intern("cdr");
+	I->satom = intern("atom");
+	I->scond = intern("cond");
+	I->scons = intern("cons");
+	I->seq = intern("eq");
+	I->slabel = intern("label");
+	I->sfn = intern("fn");
+	I->ssetq = intern("setq");
+
         if (init_file_stream(&I->stream, filename) == 0)
                 return FALSE;
         /* set env to () */
