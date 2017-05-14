@@ -1,6 +1,8 @@
+(setq cadr '(fn (x) (car (cdr x))))
+
 "hello world"
 (car '("hello world" "goodbye world"))
-(cdr '("hello world" "goodbye world"))
+(cadr '("hello world" "goodbye world"))
 
 ((fn (x) (x '(1 2))) 'car)
 ((fn (x) (x '(1 2))) 'cdr)

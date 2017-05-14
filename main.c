@@ -741,11 +741,8 @@ static size_t _gc_free = 0;
 static u8* _gc_heap = 0;
 
 void GC_INIT() {
-        _gc_size = 64*1024;
-        _gc_free = 64*1024;
+        _gc_size = _gc_free = 64*1024;
         _gc_heap = (u8*)malloc(_gc_size);
-        memset(_gc_heap, 0, _gc_size);
-        printf("inited heap with 64k\n");
 }
 
 void* GC_malloc(size_t len) {
