@@ -370,9 +370,8 @@ object *builtin_sub(object *args) {
 		n = -atol(TEXT(args->car));
 	} else {
 		n = atol(TEXT(args->car));
-		for (args = args->cdr; args != NULL; args = args->cdr) {
+		for (args = args->cdr; args != NULL; args = args->cdr)
 			n = n - atol(TEXT(args->car));
-		}
 	}
 	return new_atom(itos(n));
 }
@@ -498,12 +497,11 @@ void gc_collect(void) {
 		gc_copy(roots[i]);
 
 	// copy heap
-	for (; scanptr < allocptr; ++scanptr) {
+	for (; scanptr < allocptr; ++scanptr)
 		if (scanptr->tag == T_CONS || scanptr->tag == T_LAMBDA) {
 			gc_copy(&(scanptr->car));
 			gc_copy(&(scanptr->cdr));
 		}
-	}
 }
 
 void gc_copy(object **root) {
