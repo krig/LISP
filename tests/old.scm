@@ -18,4 +18,4 @@
                   ((null? l) #f)
                   (#t (cons (f (car l)) (mapcar f (cdr l)))))))
 
-(displayln (mapcar ff (list 1 (list 2 3))))
+(displayln (mapcar ff (quote ((5 2) 3))))
