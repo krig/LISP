@@ -11,9 +11,15 @@ A tribute to:
 
 A micro-subset of scheme / the original LISP in a single C file: `komplott.c`
 
+### Features
+
+* Single file implementation.
 * Scheme-compliant enough for the test programs to be executable by
   GNU Guile.
-* Includes a copying garbage collector based on Cheney's Algorithm.
+* Copying garbage collector based on Cheney's Algorithm.
+* Limited tail call optimization (not true TCO; see `tests/true-tco.scm`).
+* Near-zero error handling.
+* Zero thread safety or security.
 
 *Also includes:*
 
