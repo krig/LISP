@@ -1,28 +1,25 @@
-CC:=gcc
-CFLAGS:=-Wall -Werror -g -std=c99 -isystem /usr/local/include
-DEPS = stream.h
-OBJ = main.o stream.o
+SRC = komplott.c
 
-ifeq ($(USE_LIBGC), 0)
-GCFLAGS = -DUSE_LIBGC=0
-LIBS =
-else
-GCFLAGS = -DUSE_LIBGC=1
-LIBS = -lgc
-endif
+.PHONY: all test lisp15 clean opt
 
+all: komplott
 
-%.o: %.c $(DEPS)
-	$(CC) -c -o $@ $< $(CFLAGS) $(GCFLAGS)
+komplott: $(SRC)
+	$(CC) -g -Og -Wall -Werror -std=c11 -o $@ $(SRC)
+	wc -l $^ tests/lisp15.scm
 
-LISP: $(OBJ)
-	$(CC) -o $@ $^ $(CFLAGS) $(LIBS) $(GCFLAGS)
+komplott.opt: $(SRC)
+	$(CC) -O2 -Wall -Werror -std=c11 -o $@ $(SRC)
 
-.PHONY: clean test
+opt: komplott.opt
 
-test: LISP
-	./LISP test.lisp
-	./LISP test2.lisp
+lisp15: komplott lisp15.scm
+	./komplott lisp15.scm
+
+test: komplott tests/test.scm
+	time -p ./komplott tests/test.scm
+	./komplott tests/lisp15.scm
+	./komplott tests/exp.scm
 
 clean:
-	rm -f LISP $(OBJ)
+	rm -f ./komplott ./komplott.opt

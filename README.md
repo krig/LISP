@@ -1,142 +1,122 @@
-# a humble LISP
+# komplott
 
 [![Build Status](https://travis-ci.org/krig/LISP.svg?branch=master)](https://travis-ci.org/krig/LISP)
 
-My attempt to implement an interpreter for the original LISP.
+A tribute to:
 
-## DEPENDENCIES
+> Recursive Functions of Symbolic Expressions
+> and Their Computation by Machine, Part I
 
-* A C99-compatible compiler
-* libgc (boehm gc)
+(as found in `paper/recursive.pdf`)
 
-## PRIMITIVES
+A micro-subset of scheme / the original LISP in a single C file: `komplott.c`
+
+* Scheme-compliant enough for the test programs to be executable by
+  GNU Guile.
+* Includes a copying garbage collector based on Cheney's Algorithm.
+
+*Also includes:*
+
+## `lisp15.scm`
+
+An implementation of the core of LISP 1.5 from 1962
+
+## Instructions
+
+* To build the `komplott` executable, run `make`. The only dependency
+  aside from `make` is `gcc`.
+  
+* To run the LISP 1.5 interpreter and a couple of test cases, run `make lisp15`.
+
+## LISP 1.5
+
+The version presented in the README is slightly tweaked from the one
+that can be found in `tests/lisp15.scm` in order to more closely
+resemble early LISP rather than scheme: `#t` and `#f` are written as
+`t` and `nil`.
+
+``` lisp
+
+(define pairlis (lambda (x y a)
+                  (cond ((null? x) a)
+                        (t (cons (cons (car x) (car y))
+                                 (pairlis (cdr x) (cdr y) a))))))
+
+(define assoc (lambda (x a)
+                (cond ((equal? (caar a) x) (car a))
+                      (t (assoc x (cdr a))))))
+
+(define atom? (lambda (x)
+                (cond
+                 ((null? x) t)
+                 ((atom? x) t)
+                 (t nil))))
+
+(define evcon (lambda (c a)
+                (cond
+                 ((eval (caar c) a) (eval (cadar c) a))
+                 (t (evcon (cdr c) a)))))
+
+(define evlis (lambda (m a)
+                (cond
+                 ((null? m) nil)
+                 (t (cons (eval (car m) a)
+                             (evlis (cdr m) a))))))
+
+(define apply (lambda (fun x a)
+                (cond
+                 ((atom? fun)
+                  (cond
+                   ((equal? fun (quote CAR)) (caar x))
+                   ((equal? fun (quote CDR)) (cdar x))
+                   ((equal? fun (quote CONS)) (cons (car x) (cadr x)))
+                   ((equal? fun (quote ATOM)) (atom? (car x)))
+                   ((equal? fun (quote EQ)) (equal? (car x) (cadr x)))
+                   (t (apply (eval fun a) x a))))
+
+                 ((equal? (car fun) (quote LAMBDA))
+                  (eval (caddr fun) (pairlis (cadr fun) x a)))
+
+                 ((equal? (car fun) (quote LABEL))
+                  (apply
+                   (caddr fun)
+                   x
+                   (cons
+                    (cons (cadr fun) (caddr fun))
+                    a))))))
+
+(define eval (lambda (e a)
+               (cond
+                ((atom? e) (cdr (assoc e a)))
+                ((atom? (car e))
+                 (cond
+                  ((equal? (car e) (quote QUOTE)) (cadr e))
+                  ((equal? (car e) (quote COND)) (evcon (cdr e) a))
+                  (t (apply (car e) (evlis (cdr e) a) a))))
+                (t (apply (car e) (evlis (cdr e) a) a)))))
+
+(define evalquote (lambda (fn x) (apply fn x (quote ()))))
 
 ```
-x = atom
-(x . y) = s-expression
-(atom x) -> t IF x is an atom
-(atom (x . x)) -> nil
 
-(eq x y) -> t if x and y are both atomic and refer to the same symbol
-    (eq x x) => t
-    (eq x y) => nil
-    (eq x (x . y)) => undefined
+Here is an example of actual LISP 1.5 code:
 
-(car x) -> defined only if x is not atomic
-     (car (e1 . e2)) => e1
-     (car (x . a)) => x
-     (car ((x . a) . y)) => (x . a)
+``` lisp
+((LABEL MAPCAR
+        (LAMBDA (FN SEQ)
+                (COND
+                  ((EQ NIL SEQ) NIL)
+                  (T (CONS (FN (CAR SEQ))
+                           (MAPCAR FN (CDR SEQ)))))))
+ DUP LST)
 
-(cdr x) ->
-     (cdr (e1 . e2)) => e2
-
-(cons x y) -> for any x y
-      (cons x x) -> (x . x)
-      (cons e1 e2) -> (e1 . e2)
-
-(cond (e1 s1) (e2 s2) (e3 s3)) ->
-      returns the first sN for which eN evaluates to t
-
-(ff x) ->
-    (cond
-      ((atom x) x)
-      (t (ff (car x))))
-
-(defun (subst x y z)
-    "the result of substituting the sexpr x for all
-occurrences of the atomic symbol y in the sexpr z"
-  (cond
-    ((atom z) (cond
-                ((eq z y) x)
-                (t z)))
-    (t (cons (subst x y (car z))
-             (subst x y (cdr z))))))
-
-(defun (and x y)
-    (cond
-      (x y)
-      (t nil)))
-
-(defun (or x y)
-    (cond
-      (x t)
-      (t y)))
-
-(defun (not x)
-    (cond
-      (x nil)
-      (t t)))
-
-(defun (weirdo p q)
-    (cond
-      (p q)
-      (t t)))
-
-(defun (equal x y)
-    (or (and (atom x) (atom y) (eq x y))
-     (and (not (atom x)) (not (atom y))
-          (equal (car x) (car y))
-          (equal (cdr x) (cdr y)))))
-
-(defun (null x)
-    (and (atom x) (eq x nil)))
-
-(defun (cadr x)
-    (car (cdr x)))
-
-(defun (caddr x)
-    (car (cdr (cdr x))))
-
-;; etc.
-
-(defun (list a b c)
-    (cons a (cons b (cons c nil))))
-
-(defun (append x y)
-    (cond
-      ((null x) y)
-      (t (cons (car x)
-               (append (cdr x) y)))))
-
-(defun (apply f args)
-    (eval (cons f (appq args)) nil))
-
-(defun (appq m)
-    (cond
-      ((null m) nil)
-      (t (cons (list 'quote (car m))
-               (appq (cdr m))))))
-
-(defun (eval e a)
-    (cond
-      ((atom e) (assoc e a))
-      ((atom (car e))
-       (cond
-         ((eq (car e) 'quote) (cadr e))
-         ((eq (car e) 'atom) (atom (eval (cadr e) a)))
-         ((eq (car e) 'eq) (eq (eval (cadr e) a) (eval (cddr e) a))
-         ((eq (car e) 'cond) (evcon (cdr e) a))
-         ((eq (car e) 'car) (car (eval (cadr e) a)))
-         ((eq (car e) 'cdr) (cdr (eval (cadr e) a)))
-         ((eq (car e) 'cons) (cons (eval (cadr e) a)
-                                   (eval (caddr e) a)))
-         (t (eval (cons (assoc (car e) a)
-                        evlis (cdr e) a)
-                  a))
-         ((eq (caar e) 'label) (eval (cons (caddar e) (cdr e))
-                                     (cons (list (cadar e)
-                                                 (car e)
-                                                 a))))
-         ((eq (caar e) 'lambda) (eval (caddar e)
-                                      (append (pair (cadar e) (evlis (cdr e) a) a)))))))))
-
-(defun (evcon c a)
-    (cond
-      ((eval (caar c) a) (eval (cadar c) a))
-      (t (evcon (cdr c) a))))
-
-(defun (evlis m a)
-    (cond
-      ((null m) nil)
-      (t (cons (eval (car m) a) (evlis (cdr m) a)))))
+; where
+; DUP -> (LAMBDA (X) (CONS X X))
+; LST -> (A B C)
 ```
+
+> To prevent reading from continuing indefinitely, each packet should end
+> with STOP followed by a large number of right parentheses. An unpaired right parenthesis
+> will cause a read error and terminate reading.
+
+`STOP )))))))))))))))))`
