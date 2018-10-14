@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdint.h>
 #include <ctype.h>
 #include <assert.h>
 #include <stdarg.h>
@@ -16,10 +15,10 @@ typedef struct object_t {
 	object_tag tag;
 } object;
 
-void gc_init(void);
-object* gc_alloc(object_tag tag, object *car, object *cdr);
-void gc_protect(object **r, ...);
-void gc_pop(void);
+void    gc_init(void);
+object *gc_alloc(object_tag tag, object *car, object *cdr);
+void    gc_protect(object **r, ...);
+void    gc_pop(void);
 
 #define TOKEN_MAX 256
 #define ATOMCHAR(ch) (((ch) >= '!' && (ch) <= '\'') || ((ch) >= '*' && (ch) <= '~'))
@@ -76,14 +75,14 @@ static const char *TCOND = NULL;
 static const char *TDEFINE = NULL;
 static const char *TBEGIN = NULL;
 static const char *TOR = NULL;
-static char token_text[TOKEN_MAX];
-static int token_peek = 0;
-static object *atom_t = NULL;
+static char        token_text[TOKEN_MAX];
+static int         token_peek = 0;
+static object     *atom_t = NULL;
 
 object *lisp_read_list(const char *tok, FILE *in);
 object *lisp_read_obj(const char *tok, FILE *in);
 object *lisp_read(FILE *in);
-void lisp_print(object *obj);
+void    lisp_print(object *obj);
 object *lisp_eval(object *obj, object *env);
 
 const char *read_token(FILE *in) {
@@ -106,9 +105,8 @@ const char *read_token(FILE *in) {
 }
 
 object *lisp_read_obj(const char *tok, FILE *in) {
-	if (tok[0] != '(')
-		return new_atom(tok);
-	return lisp_read_list(read_token(in), in);
+	return (tok[0] != '(') ? new_atom(tok) :
+		lisp_read_list(read_token(in), in);
 }
 
 object *lisp_read_list(const char *tok, FILE *in) {
@@ -392,6 +390,7 @@ object *builtin_display(object *args) {
 }
 
 object *builtin_newline(object *args) {
+	(void)args;
 	printf("\n");
 	return NULL;
 }
@@ -511,9 +510,7 @@ void gc_copy(object **root) {
 	if (*root == NULL)
 		return;
 	if ((*root)->car == &fwdmarker) {
-		do {
-			*root = (*root)->cdr;
-		} while ((*root)->car == &fwdmarker);
+		*root = (*root)->cdr;
 	} else if (*root < fromspace || *root >= (fromspace + HEAPSIZE)) {
 		object *p = allocptr++;
 		memcpy(p, *root, sizeof(object));
