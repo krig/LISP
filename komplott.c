@@ -38,7 +38,7 @@ const char *intern_string(const char *str) {
 	return item->text;
 }
 
-int isnumber(const char *s) {
+int match_number(const char *s) {
 	if (*s == '-' || *s == '+')
 		s++;
 	do {
@@ -201,7 +201,7 @@ object *lisp_eval(object *expr, object *env) {
 restart:
 	if (expr == NULL)
 		return expr;
-	if (expr->tag == T_ATOM && isnumber(TEXT(expr)))
+	if (expr->tag == T_ATOM && match_number(TEXT(expr)))
 		return expr;
 	if (expr->tag == T_ATOM)
 		return env_lookup(expr, env);
