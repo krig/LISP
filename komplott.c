@@ -21,20 +21,30 @@ void    gc_protect(object **r, ...);
 void    gc_pop(void);
 
 #define TOKEN_MAX 256
+#define HASHMAP_SIZE 1024
 #define ATOMCHAR(ch) (((ch) >= '!' && (ch) <= '\'') || ((ch) >= '*' && (ch) <= '~'))
 #define TEXT(x) (((x) && (x)->tag == T_ATOM) ? ((const char *)((x)->car)) : "")
 
+size_t stringhash(const char *str) {
+    size_t hash = 5381;
+    for (int c = *str++; c; c = *str++)
+        hash = ((hash << 5) + hash) + c;
+    return hash;
+}
+
 const char *intern_string(const char *str) {
-	static struct intern { struct intern *next; const char *text; } *interns = NULL;
-	for (struct intern* is = interns; is != NULL; is = is->next)
+	struct intern { struct intern *next; const char *text; };
+	static struct intern* interns[HASHMAP_SIZE] = {0};
+	size_t hash = stringhash(str) % HASHMAP_SIZE;
+	for (struct intern* is = interns[hash]; is != NULL; is = is->next)
 		if (strcmp(is->text, str) == 0)
 			return is->text;
 	size_t sz = strlen(str) + 1;
 	struct intern *item = malloc(sizeof(struct intern) + sz);
 	item->text = ((char *)item) + sizeof(struct intern);
 	memcpy((char *)(item->text), str, sz);
-	item->next = interns;
-	interns = item;
+	item->next = interns[hash];
+	interns[hash] = item;
 	return item->text;
 }
 
