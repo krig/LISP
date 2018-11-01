@@ -455,7 +455,7 @@ int main(int argc, char* argv[]) {
 	return 0;
 }
 
-#define HEAPSIZE 2048
+#define HEAPSIZE 16384
 #define MAXROOTS 500
 #define MAXFRAMES 50
 static object *heap, *tospace, *fromspace, *allocptr, *scanptr;
