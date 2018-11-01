@@ -459,7 +459,6 @@ int main(int argc, char* argv[]) {
 	return 0;
 }
 
-// GC state
 #define HEAPSIZE 2048
 #define MAXROOTS 500
 #define MAXFRAMES 50
@@ -467,8 +466,6 @@ static object *heap, *tospace, *fromspace, *allocptr, *scanptr;
 static object ** roots[MAXROOTS];
 static size_t rootstack[MAXFRAMES];
 static size_t roottop, numroots;
-
-// Moved objects are replaced by a forwarding pointer
 static object fwdmarker = { .tag = T_ATOM, .car = 0, .cdr = 0 };
 
 static void gc_collect(void);
@@ -499,18 +496,15 @@ object *gc_alloc(object_tag tag, object *car, object *cdr) {
 }
 
 void gc_collect(void) {
-	// swap
 	object *tmp = fromspace;
 	fromspace = tospace;
 	tospace = tmp;
 	allocptr = fromspace;
 	scanptr = fromspace;
 
-	// copy roots
 	for (size_t i = 0; i < numroots; ++i)
 		gc_copy(roots[i]);
 
-	// copy heap
 	for (; scanptr < allocptr; ++scanptr)
 		if (scanptr->tag == T_CONS || scanptr->tag == T_LAMBDA) {
 			gc_copy(&(scanptr->car));
