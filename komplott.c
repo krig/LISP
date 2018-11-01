@@ -464,8 +464,36 @@ static size_t rootstack[MAXFRAMES];
 static size_t roottop, numroots;
 static object fwdmarker = { .tag = T_ATOM, .car = 0, .cdr = 0 };
 
-static void gc_collect(void);
-static void gc_copy(object ** o);
+void gc_copy(object **root) {
+	if (*root == NULL)
+		return;
+	if ((*root)->car == &fwdmarker) {
+		*root = (*root)->cdr;
+	} else if (*root < fromspace || *root >= (fromspace + HEAPSIZE)) {
+		object *p = allocptr++;
+		memcpy(p, *root, sizeof(object));
+		(*root)->car = &fwdmarker;
+		(*root)->cdr = p;
+		*root = p;
+	}
+}
+
+void gc_collect(void) {
+	object *tmp = fromspace;
+	fromspace = tospace;
+	tospace = tmp;
+	allocptr = fromspace;
+	scanptr = fromspace;
+
+	for (size_t i = 0; i < numroots; ++i)
+		gc_copy(roots[i]);
+
+	for (; scanptr < allocptr; ++scanptr)
+		if (scanptr->tag == T_CONS || scanptr->tag == T_LAMBDA) {
+			gc_copy(&(scanptr->car));
+			gc_copy(&(scanptr->cdr));
+		}
+}
 
 void gc_init(void) {
 	allocptr = fromspace = heap = malloc(sizeof(object) * HEAPSIZE * 2);
@@ -489,37 +517,6 @@ object *gc_alloc(object_tag tag, object *car, object *cdr) {
 	allocptr->car = car;
 	allocptr->cdr = cdr;
 	return allocptr++;
-}
-
-void gc_collect(void) {
-	object *tmp = fromspace;
-	fromspace = tospace;
-	tospace = tmp;
-	allocptr = fromspace;
-	scanptr = fromspace;
-
-	for (size_t i = 0; i < numroots; ++i)
-		gc_copy(roots[i]);
-
-	for (; scanptr < allocptr; ++scanptr)
-		if (scanptr->tag == T_CONS || scanptr->tag == T_LAMBDA) {
-			gc_copy(&(scanptr->car));
-			gc_copy(&(scanptr->cdr));
-		}
-}
-
-void gc_copy(object **root) {
-	if (*root == NULL)
-		return;
-	if ((*root)->car == &fwdmarker) {
-		*root = (*root)->cdr;
-	} else if (*root < fromspace || *root >= (fromspace + HEAPSIZE)) {
-		object *p = allocptr++;
-		memcpy(p, *root, sizeof(object));
-		(*root)->car = &fwdmarker;
-		(*root)->cdr = p;
-		*root = p;
-	}
 }
 
 void gc_protect(object **r, ...) {
