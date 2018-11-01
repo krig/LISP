@@ -79,12 +79,8 @@ object *new_cons(object *car, object *cdr) {
 	return ret;
 }
 
-static const char *TQUOTE = NULL;
-static const char *TLAMBDA = NULL;
-static const char *TCOND = NULL;
-static const char *TDEFINE = NULL;
-static const char *TBEGIN = NULL;
-static const char *TOR = NULL;
+static const char *TQUOTE = NULL, *TLAMBDA = NULL, *TCOND = NULL,
+	*TDEFINE = NULL, *TBEGIN = NULL, *TOR = NULL;
 static char        token_text[TOKEN_MAX];
 static int         token_peek = 0;
 static object     *atom_t = NULL;
