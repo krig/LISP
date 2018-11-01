@@ -21,31 +21,31 @@ void    gc_protect(object **r, ...);
 void    gc_pop(void);
 
 #define TOKEN_MAX 256
-#define HASHMAP_SIZE 1024
+#define HASHMAP_SIZE 2048
 #define ATOMCHAR(ch) (((ch) >= '!' && (ch) <= '\'') || ((ch) >= '*' && (ch) <= '~'))
 #define TEXT(x) (((x) && (x)->tag == T_ATOM) ? ((const char *)((x)->car)) : "")
 
-size_t stringhash(const char *str) {
+size_t djbhash(const char *str) {
     size_t hash = 5381;
     for (int c = *str++; c; c = *str++)
-        hash = ((hash << 5) + hash) + c;
+        hash = (hash << 5) + hash + c;
     return hash;
 }
 
 const char *intern_string(const char *str) {
-	struct intern { struct intern *next; const char *text; };
-	static struct intern* interns[HASHMAP_SIZE] = {0};
-	size_t hash = stringhash(str) % HASHMAP_SIZE;
-	for (struct intern* is = interns[hash]; is != NULL; is = is->next)
-		if (strcmp(is->text, str) == 0)
-			return is->text;
+	typedef struct node { struct node *next; const char *data; } node_t;
+	static node_t* nodes[HASHMAP_SIZE] = {0};
+	size_t hash = djbhash(str) % HASHMAP_SIZE;
+	for (node_t* is = nodes[hash]; is != NULL; is = is->next)
+		if (strcmp(is->data, str) == 0)
+			return is->data;
 	size_t sz = strlen(str) + 1;
-	struct intern *item = malloc(sizeof(struct intern) + sz);
-	item->text = ((char *)item) + sizeof(struct intern);
-	memcpy((char *)(item->text), str, sz);
-	item->next = interns[hash];
-	interns[hash] = item;
-	return item->text;
+	node_t *item = malloc(sizeof(node_t) + sz);
+	item->data = ((char *)item) + sizeof(node_t);
+	memcpy((char *)(item->data), str, sz);
+	item->next = nodes[hash];
+	nodes[hash] = item;
+	return item->data;
 }
 
 int match_number(const char *s) {
@@ -59,7 +59,7 @@ int match_number(const char *s) {
 }
 
 const char *itos(long n) {
-	static char ch[TOKEN_MAX];
+	char ch[TOKEN_MAX];
 	snprintf(ch, TOKEN_MAX, "%ld", n);
 	return intern_string(ch);
 }
@@ -399,12 +399,15 @@ object *builtin_display(object *args) {
 }
 
 object *builtin_newline(object *args) {
-	(void)args;
 	printf("\n");
 	return NULL;
 }
 
-void add_builtin(object *env, const char *name, cfunc fn) {
+object *builtin_read(object *args) {
+	return lisp_read(stdin);
+}
+
+void defun(object *env, const char *name, cfunc fn) {
 	object *key = NULL, *val = NULL;
 	gc_protect(&env, &key, &val, NULL);
 	key = new_atom(name);
@@ -431,18 +434,19 @@ int main(int argc, char* argv[]) {
 	atom_f = new_atom("#f");
 	env_set(env, atom_t, atom_t);
 	env_set(env, atom_f, NULL);
-	add_builtin(env, "car", &builtin_car);
-	add_builtin(env, "cdr", &builtin_cdr);
-	add_builtin(env, "cons", &builtin_cons);
-	add_builtin(env, "list", &builtin_list);
-	add_builtin(env, "equal?", &builtin_equal);
-	add_builtin(env, "pair?", &builtin_pair);
-	add_builtin(env, "null?", &builtin_null);
-	add_builtin(env, "+", &builtin_sum);
-	add_builtin(env, "-", &builtin_sub);
-	add_builtin(env, "*", &builtin_mul);
-	add_builtin(env, "display", &builtin_display);
-	add_builtin(env, "newline", &builtin_newline);
+	defun(env, "car", &builtin_car);
+	defun(env, "cdr", &builtin_cdr);
+	defun(env, "cons", &builtin_cons);
+	defun(env, "list", &builtin_list);
+	defun(env, "equal?", &builtin_equal);
+	defun(env, "pair?", &builtin_pair);
+	defun(env, "null?", &builtin_null);
+	defun(env, "+", &builtin_sum);
+	defun(env, "-", &builtin_sub);
+	defun(env, "*", &builtin_mul);
+	defun(env, "display", &builtin_display);
+	defun(env, "newline", &builtin_newline);
+	defun(env, "read", &builtin_read);
 	FILE *in = (argc > 1) ? fopen(argv[1], "r") : stdin;
 	for (;;) {
 		obj = lisp_read(in);
