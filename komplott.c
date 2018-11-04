@@ -15,15 +15,34 @@ typedef struct object_t {
 	object_tag tag;
 } object;
 
-void    gc_init(void);
-object *gc_alloc(object_tag tag, object *car, object *cdr);
-void    gc_protect(object **r, ...);
-void    gc_pop(void);
-
 #define TOKEN_MAX 256
 #define HASHMAP_SIZE 2048
 #define ATOMCHAR(ch) (((ch) >= '!' && (ch) <= '\'') || ((ch) >= '*' && (ch) <= '~'))
 #define TEXT(x) (((x) && (x)->tag == T_ATOM) ? ((const char *)((x)->car)) : "")
+#define HEAPSIZE 16384
+#define MAXROOTS 500
+#define MAXFRAMES 50
+
+static const char *TQUOTE = NULL, *TLAMBDA = NULL, *TCOND = NULL,
+	*TDEFINE = NULL, *TBEGIN = NULL, *TOR = NULL;
+static char        token_text[TOKEN_MAX];
+static int         token_peek = 0;
+static object     *atom_t = NULL;
+static object *heap, *tospace, *fromspace, *allocptr, *scanptr;
+static object ** roots[MAXROOTS];
+static size_t rootstack[MAXFRAMES];
+static size_t roottop, numroots;
+static object fwdmarker = { .tag = T_ATOM, .car = 0, .cdr = 0 };
+
+void    gc_init(void);
+object *gc_alloc(object_tag tag, object *car, object *cdr);
+void    gc_protect(object **r, ...);
+void    gc_pop(void);
+object *lisp_read_list(const char *tok, FILE *in);
+object *lisp_read_obj(const char *tok, FILE *in);
+object *lisp_read(FILE *in);
+void    lisp_print(object *obj);
+object *lisp_eval(object *obj, object *env);
 
 size_t djbhash(const unsigned char *str) {
     size_t hash = 5381;
@@ -77,18 +96,6 @@ object *new_cons(object *car, object *cdr) {
 	gc_pop();
 	return ret;
 }
-
-static const char *TQUOTE = NULL, *TLAMBDA = NULL, *TCOND = NULL,
-	*TDEFINE = NULL, *TBEGIN = NULL, *TOR = NULL;
-static char        token_text[TOKEN_MAX];
-static int         token_peek = 0;
-static object     *atom_t = NULL;
-
-object *lisp_read_list(const char *tok, FILE *in);
-object *lisp_read_obj(const char *tok, FILE *in);
-object *lisp_read(FILE *in);
-void    lisp_print(object *obj);
-object *lisp_eval(object *obj, object *env);
 
 const char *read_token(FILE *in) {
 	int n = 0;
@@ -411,58 +418,6 @@ void defun(object *env, const char *name, cfunc fn) {
 	gc_pop();
 }
 
-int main(int argc, char* argv[]) {
-	gc_init();
-	TQUOTE = intern_string("quote");
-	TLAMBDA = intern_string("lambda");
-	TCOND = intern_string("cond");
-	TDEFINE = intern_string("define");
-	TBEGIN = intern_string("begin");
-	TOR = intern_string("or");
-	memset(token_text, 0, TOKEN_MAX);
-	token_peek = ' ';
-
-	object *env = NULL, *atom_f = NULL, *obj = NULL;
-	gc_protect(&env, &atom_t, &atom_f, &obj, NULL);
-	env = new_env(NULL);
-	atom_t = new_atom("#t");
-	atom_f = new_atom("#f");
-	env_set(env, atom_t, atom_t);
-	env_set(env, atom_f, NULL);
-	defun(env, "car", &builtin_car);
-	defun(env, "cdr", &builtin_cdr);
-	defun(env, "cons", &builtin_cons);
-	defun(env, "list", &builtin_list);
-	defun(env, "equal?", &builtin_equal);
-	defun(env, "pair?", &builtin_pair);
-	defun(env, "null?", &builtin_null);
-	defun(env, "+", &builtin_sum);
-	defun(env, "-", &builtin_sub);
-	defun(env, "*", &builtin_mul);
-	defun(env, "display", &builtin_display);
-	defun(env, "newline", &builtin_newline);
-	defun(env, "read", &builtin_read);
-	FILE *in = (argc > 1) ? fopen(argv[1], "r") : stdin;
-	for (;;) {
-		obj = lisp_read(in);
-		obj = lisp_eval(obj, env);
-		if (in == stdin) {
-			lisp_print(obj);
-			printf("\n");
-		}
-	}
-	return 0;
-}
-
-#define HEAPSIZE 16384
-#define MAXROOTS 500
-#define MAXFRAMES 50
-static object *heap, *tospace, *fromspace, *allocptr, *scanptr;
-static object ** roots[MAXROOTS];
-static size_t rootstack[MAXFRAMES];
-static size_t roottop, numroots;
-static object fwdmarker = { .tag = T_ATOM, .car = 0, .cdr = 0 };
-
 void gc_copy(object **root) {
 	if (*root == NULL)
 		return;
@@ -532,4 +487,47 @@ void gc_protect(object **r, ...) {
 
 void gc_pop(void) {
 	numroots = rootstack[--roottop];
+}
+
+int main(int argc, char* argv[]) {
+	gc_init();
+	TQUOTE = intern_string("quote");
+	TLAMBDA = intern_string("lambda");
+	TCOND = intern_string("cond");
+	TDEFINE = intern_string("define");
+	TBEGIN = intern_string("begin");
+	TOR = intern_string("or");
+	memset(token_text, 0, TOKEN_MAX);
+	token_peek = ' ';
+
+	object *env = NULL, *atom_f = NULL, *obj = NULL;
+	gc_protect(&env, &atom_t, &atom_f, &obj, NULL);
+	env = new_env(NULL);
+	atom_t = new_atom("#t");
+	atom_f = new_atom("#f");
+	env_set(env, atom_t, atom_t);
+	env_set(env, atom_f, NULL);
+	defun(env, "car", &builtin_car);
+	defun(env, "cdr", &builtin_cdr);
+	defun(env, "cons", &builtin_cons);
+	defun(env, "list", &builtin_list);
+	defun(env, "equal?", &builtin_equal);
+	defun(env, "pair?", &builtin_pair);
+	defun(env, "null?", &builtin_null);
+	defun(env, "+", &builtin_sum);
+	defun(env, "-", &builtin_sub);
+	defun(env, "*", &builtin_mul);
+	defun(env, "display", &builtin_display);
+	defun(env, "newline", &builtin_newline);
+	defun(env, "read", &builtin_read);
+	FILE *in = (argc > 1) ? fopen(argv[1], "r") : stdin;
+	for (;;) {
+		obj = lisp_read(in);
+		obj = lisp_eval(obj, env);
+		if (in == stdin) {
+			lisp_print(obj);
+			printf("\n");
+		}
+	}
+	return 0;
 }
