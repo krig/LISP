@@ -33,7 +33,7 @@ size_t djbhash(const char *str) {
 }
 
 const char *intern_string(const char *str) {
-	typedef struct node { struct node *next; const char *data; } node_t;
+	typedef struct node { struct node *next; char data[]; } node_t;
 	static node_t* nodes[HASHMAP_SIZE] = {0};
 	size_t hash = djbhash(str) % HASHMAP_SIZE;
 	for (node_t* is = nodes[hash]; is != NULL; is = is->next)
@@ -41,8 +41,7 @@ const char *intern_string(const char *str) {
 			return is->data;
 	size_t sz = strlen(str) + 1;
 	node_t *item = malloc(sizeof(node_t) + sz);
-	item->data = ((char *)item) + sizeof(node_t);
-	memcpy((char *)(item->data), str, sz);
+	memcpy(item->data, str, sz);
 	item->next = nodes[hash];
 	nodes[hash] = item;
 	return item->data;
