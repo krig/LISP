@@ -307,7 +307,7 @@ void lisp_print(object *obj) {
 	} else if (obj->tag == T_ATOM) {
 		printf("%s", TEXT(obj));
 	} else if (obj->tag == T_CFUNC) {
-		printf("<C@%p>", obj);
+		printf("<C@%p>", (void *)obj);
 	} else if (obj->tag == T_LAMBDA) {
 		printf("<lambda ");
 		lisp_print(obj->car);
