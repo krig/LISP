@@ -196,9 +196,7 @@ object *new_env(object *env) {
 object *list_reverse(object *lst) {
 	if (lst == NULL)
 		return NULL;
-	object *prev = NULL;
-	object *curr = lst;
-	object *next = lst->cdr;
+	object *prev = NULL, *curr = lst, *next = lst->cdr;
 	while (curr) {
 		curr->cdr = prev;
 		prev = curr;
