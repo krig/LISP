@@ -436,8 +436,7 @@ void gc_collect(void) {
 	object *tmp = fromspace;
 	fromspace = tospace;
 	tospace = tmp;
-	allocptr = fromspace;
-	scanptr = fromspace;
+	allocptr = scanptr = fromspace;
 
 	for (size_t i = 0; i < numroots; ++i)
 		gc_copy(roots[i]);
