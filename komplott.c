@@ -46,7 +46,7 @@ object *lisp_eval(object *obj, object *env);
 
 size_t djbhash(const unsigned char *str) {
     size_t hash = 5381;
-    for (size_t c = *str++; c; c = *str++)
+    for (int c = *str++; c; c = *str++)
         hash = (hash << 5) + hash + c;
     return hash;
 }
