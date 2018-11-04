@@ -23,16 +23,16 @@ typedef struct object_t {
 #define MAXROOTS 500
 #define MAXFRAMES 50
 
-static const char *TQUOTE = NULL, *TLAMBDA = NULL, *TCOND = NULL,
+const char *TQUOTE = NULL, *TLAMBDA = NULL, *TCOND = NULL,
 	*TDEFINE = NULL, *TBEGIN = NULL, *TOR = NULL;
-static char        token_text[TOKEN_MAX];
-static int         token_peek = 0;
-static object     *atom_t = NULL;
-static object *heap, *tospace, *fromspace, *allocptr, *scanptr;
-static object ** roots[MAXROOTS];
-static size_t rootstack[MAXFRAMES];
-static size_t roottop, numroots;
-static object fwdmarker = { .tag = T_ATOM, .car = 0, .cdr = 0 };
+char        token_text[TOKEN_MAX];
+int         token_peek = 0;
+object     *atom_t = NULL;
+object *heap, *tospace, *fromspace, *allocptr, *scanptr;
+object ** roots[MAXROOTS];
+size_t rootstack[MAXFRAMES];
+size_t roottop, numroots;
+object fwdmarker = { .tag = T_ATOM, .car = 0, .cdr = 0 };
 
 void    gc_init(void);
 object *gc_alloc(object_tag tag, object *car, object *cdr);
