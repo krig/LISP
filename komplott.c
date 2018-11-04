@@ -25,9 +25,9 @@ void    gc_pop(void);
 #define ATOMCHAR(ch) (((ch) >= '!' && (ch) <= '\'') || ((ch) >= '*' && (ch) <= '~'))
 #define TEXT(x) (((x) && (x)->tag == T_ATOM) ? ((const char *)((x)->car)) : "")
 
-size_t djbhash(const char *str) {
+size_t djbhash(const unsigned char *str) {
     size_t hash = 5381;
-    for (int c = *str++; c; c = *str++)
+    for (size_t c = *str++; c; c = *str++)
         hash = (hash << 5) + hash + c;
     return hash;
 }
@@ -35,7 +35,7 @@ size_t djbhash(const char *str) {
 const char *intern_string(const char *str) {
 	typedef struct node { struct node *next; char data[]; } node_t;
 	static node_t* nodes[HASHMAP_SIZE] = {0};
-	size_t hash = djbhash(str) % HASHMAP_SIZE;
+	size_t hash = djbhash((const unsigned char *)str) % HASHMAP_SIZE;
 	for (node_t* is = nodes[hash]; is != NULL; is = is->next)
 		if (strcmp(is->data, str) == 0)
 			return is->data;
