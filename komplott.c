@@ -232,7 +232,6 @@ restart:
 			}
 		}
 		abort();
-		return NULL;
 	} else if (TEXT(head) == TBEGIN) {
 		object *item = NULL;
 		gc_protect(&expr, &env, &item, NULL);
