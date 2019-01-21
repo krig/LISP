@@ -322,10 +322,6 @@ object *builtin_cons(object *args) {
 	return new_cons(args->car, args->cdr->car);
 }
 
-object *builtin_list(object *args) {
-	return args;
-}
-
 object *builtin_equal(object *args) {
 	object *cmp = args->car;
 	for (args = args->cdr; args != NULL; args = args->cdr)
@@ -480,7 +476,6 @@ int main(int argc, char* argv[]) {
 	defun(env, "car", &builtin_car);
 	defun(env, "cdr", &builtin_cdr);
 	defun(env, "cons", &builtin_cons);
-	defun(env, "list", &builtin_list);
 	defun(env, "equal?", &builtin_equal);
 	defun(env, "pair?", &builtin_pair);
 	defun(env, "null?", &builtin_null);

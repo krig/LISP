@@ -32,7 +32,7 @@
 (assert (sq 3) 9)
 
 (define length (lambda (l) (cond ((null? l) 0) (else (+ 1 (length (cdr l)))))))
-(assert (length (list 1 2 3)) 3)
+(assert (length (quote (1 2 3))) 3)
 
 
 (displayln (quote fac_15))
