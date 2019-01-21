@@ -24,9 +24,9 @@
 
 (define assert (lambda (expr expect)
                  (cond ((equal? expr expect)
-                        (begin (display (quote pass:_)) (displayln expr)))
+                        ((lambda () (display (quote pass:_)) (displayln expr))))
                        (else
-                        (begin (display (quote fail:_)) (displayln expr))))))
+                        ((lambda () (display (quote fail:_)) (displayln expr)))))))
 
 (define sq (lambda (x) (* x x)))
 (assert (sq 3) 9)

@@ -24,7 +24,7 @@ typedef struct object_t {
 #define MAXFRAMES 50
 
 const char *TQUOTE = NULL, *TLAMBDA = NULL, *TCOND = NULL,
-	*TDEFINE = NULL, *TBEGIN = NULL, *TOR = NULL;
+	*TDEFINE = NULL, *TOR = NULL;
 char        token_text[TOKEN_MAX];
 int         token_peek = 0;
 object     *atom_t = NULL;
@@ -232,19 +232,6 @@ restart:
 			}
 		}
 		abort();
-	} else if (TEXT(head) == TBEGIN) {
-		object *item = NULL;
-		gc_protect(&expr, &env, &item, NULL);
-		for (item = expr->cdr; item != NULL; item = item->cdr) {
-			if (item->cdr == NULL) {
-				expr = item->car;
-				gc_pop();
-				goto restart;
-			}
-			lisp_eval(item->car, env);
-		}
-		gc_pop();
-		return NULL;
 	} else if (TEXT(head) == TOR) {
 		object *item = NULL, *it = NULL;
 		gc_protect(&env, &item, &it, NULL);
@@ -491,7 +478,6 @@ int main(int argc, char* argv[]) {
 	TLAMBDA = intern_string("lambda");
 	TCOND = intern_string("cond");
 	TDEFINE = intern_string("define");
-	TBEGIN = intern_string("begin");
 	TOR = intern_string("or");
 	memset(token_text, 0, TOKEN_MAX);
 	token_peek = ' ';
