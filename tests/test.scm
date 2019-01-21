@@ -50,8 +50,9 @@
 (define member? (lambda (a lat)
                   (cond
                    ((null? lat) #f)
-                   (else (or (equal? a (car lat))
-                             (member? a (cdr lat)))))))
+                   ((equal? a (car lat)) #t)
+                   ((member? a (cdr lat)) #t)
+                   (else #f))))
 
 (define is-first? (lambda (a lat)
                     (cond
@@ -61,8 +62,9 @@
 (define two-in-a-row? (lambda (lat)
                         (cond
                          ((null? lat) #f)
-                         (else (or (is-first? (car lat) (cdr lat))
-                                   (two-in-a-row? (cdr lat)))))))
+                         ((is-first? (car lat) (cdr lat)) #t)
+                         ((two-in-a-row? (cdr lat)) #t)
+                         (else #f))))
 
 (assert (two-in-a-row? (quote (Italian sardines spaghetti parsley))) #f)
 (assert (two-in-a-row? (quote (Italian sardines sardines spaghetti parsley))) #t)
