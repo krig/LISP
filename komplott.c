@@ -210,10 +210,8 @@ object *lisp_eval(object *expr, object *env) {
 restart:
 	if (expr == NULL)
 		return expr;
-	if (expr->tag == T_ATOM && match_number(TEXT(expr)))
-		return expr;
 	if (expr->tag == T_ATOM)
-		return env_lookup(expr, env);
+		return match_number(TEXT(expr)) ? expr : env_lookup(expr, env);
 	if (expr->tag != T_CONS)
 		return expr;
 	object *head = expr->car;
@@ -230,7 +228,7 @@ restart:
 				goto restart;
 			}
 		}
-		abort();
+		return NULL; // was abort(), but no match should return nil
 	} else if (TEXT(head) == TDEFINE) {
 		object *name = NULL;
 		object *value = NULL;
