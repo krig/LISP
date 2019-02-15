@@ -230,8 +230,7 @@ restart:
 		}
 		return NULL; // was abort(), but no match should return nil
 	} else if (TEXT(head) == TDEFINE) {
-		object *name = NULL;
-		object *value = NULL;
+		object *name = NULL, *value = NULL;
 		gc_protect(&env, &name, &value, NULL);
 		name = expr->cdr->car;
 		value = lisp_eval(expr->cdr->cdr->car, env);
