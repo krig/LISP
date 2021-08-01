@@ -135,7 +135,7 @@ object *lisp_read_list(const char *tok, FILE *in) {
 		gc_pop();
 		if (tok[0] == ')')
 			return obj2;
-		fprintf(stderr, "Error: Malformed dotted cons\n");
+		fputs("Error: Malformed dotted cons\n", stderr);
 		return NULL;
 	}
 	tmp = lisp_read_list(tok, in);
@@ -150,7 +150,7 @@ object *lisp_read(FILE *in) {
 		return NULL;
 	if (tok[0] != ')')
 		return lisp_read_obj(tok, in);
-	fprintf(stderr, "Error: Unexpected )\n");
+	fputs("Error: Unexpected )\n", stderr);
 	return NULL;
 }
 
@@ -280,30 +280,30 @@ restart:
 
 void lisp_print(object *obj) {
 	if (obj == NULL) {
-		printf("()");
+		fputs("()", stdout);
 	} else if (obj->tag == T_ATOM) {
-		printf("%s", TEXT(obj));
+		fputs(TEXT(obj), stdout);
 	} else if (obj->tag == T_CFUNC) {
 		printf("<C@%p>", (void *)obj);
 	} else if (obj->tag == T_LAMBDA) {
-		printf("<lambda ");
+		fputs("<lambda ", stdout);
 		lisp_print(obj->car);
-		printf(">");
+		fputs(">", stdout);
 	} else if (obj->tag == T_CONS) {
-		printf("(");
+		fputs("(", stdout);
 		for (;;) {
 			lisp_print(obj->car);
 			if (obj->cdr == NULL)
 				break;
-			printf(" ");
+			fputs(" ", stdout);
 			if (obj->cdr->tag != T_CONS) {
-				printf(". ");
+				fputs(". ", stdout);
 				lisp_print(obj->cdr);
 				break;
 			}
 			obj = obj->cdr;
 		}
-		printf(")");
+		fputs(")", stdout);
 	}
 }
 
@@ -367,7 +367,7 @@ object *builtin_display(object *args) {
 }
 
 object *builtin_newline(object *args) {
-	printf("\n");
+	puts("");
 	return NULL;
 }
 
@@ -429,7 +429,7 @@ object *gc_alloc(object_tag tag, object *car, object *cdr) {
 			gc_pop();
 	}
 	if (allocptr + 1 > fromspace + HEAPSIZE) {
-		fprintf(stderr, "Out of memory\n");
+		fputs("Out of memory\n", stderr);
 		abort();
 	}
 	allocptr->tag = tag;
@@ -488,7 +488,7 @@ int main(int argc, char* argv[]) {
 		obj = lisp_eval(obj, env);
 		if (in == stdin) {
 			lisp_print(obj);
-			printf("\n");
+			puts("");
 		}
 	}
 	return 0;
