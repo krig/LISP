@@ -75,10 +75,15 @@ int match_number(const char *s) {
 	return 1;
 }
 
-const char *itos(long n) {
-	char ch[TOKEN_MAX];
-	snprintf(ch, TOKEN_MAX, "%ld", n);
-	return intern_string(ch);
+const char* itos(long n) {
+	char buf[TOKEN_MAX], reversed[TOKEN_MAX];
+	char *p1 = buf, *p2 = reversed;
+	unsigned long u = (unsigned long)n;
+	if (n < 0) { *p1++ = '-'; u = ~u + 1; }
+	do { *p2++ = (char)(u % 10) + '0'; u /= 10; } while (u > 0);
+	do { *p1++ = *--p2; } while (p2 != reversed);
+	*p1 = '\0';
+	return intern_string(buf);
 }
 
 object *new_cfunc(cfunc func) {
