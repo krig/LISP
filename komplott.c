@@ -66,12 +66,8 @@ const char *intern_string(const char *str) {
 }
 
 int match_number(const char *s) {
-	if (*s == '-' || *s == '+')
-		s++;
-	do {
-		if (*s < '0' || *s > '9')
-			return 0;
-	} while (*++s != '\0');
+	if (*s == '-' || *s == '+') s++;
+	do { if (*s < '0' || *s > '9') return 0; } while (*++s != '\0');
 	return 1;
 }
 
