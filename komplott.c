@@ -189,10 +189,6 @@ object *env_set(object *env, object *key, object *value) {
 	return env;
 }
 
-object *new_env(object *env) {
-	return new_cons(NULL, env);
-}
-
 object *list_reverse(object *lst) {
 	if (lst == NULL)
 		return NULL;
@@ -255,7 +251,7 @@ restart:
 		gc_pop();
 		return ret;
 	} else if (fn->tag == T_LAMBDA) {
-		object *callenv = new_env(env);
+		object *callenv = new_cons(NULL, env);
 		args = fn->car;
 		object *item = NULL;
 		gc_protect(&callenv, &item, NULL);
@@ -466,7 +462,7 @@ int main(int argc, char* argv[]) {
 
 	object *env = NULL, *atom_f = NULL, *obj = NULL;
 	gc_protect(&env, &atom_t, &atom_f, &obj, NULL);
-	env = new_env(NULL);
+	env = new_cons(NULL, NULL);
 	atom_t = new_atom("#t");
 	atom_f = new_atom("#f");
 	env_set(env, atom_t, atom_t);
