@@ -2,4 +2,4 @@ komplott
 komplott.opt
 .gdb_history
 *.dSYM/**
-
+.DS_Store
