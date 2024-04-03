@@ -1,7 +1,5 @@
 # komplott
 
-[![Build Status](https://travis-ci.org/krig/LISP.svg?branch=master)](https://travis-ci.org/krig/LISP)
-
 A tribute to:
 
 > Recursive Functions of Symbolic Expressions
