@@ -436,12 +436,10 @@ object *gc_alloc(object_tag tag, object *car, object *cdr) {
 }
 
 void gc_protect(object **r, ...) {
-	assert(roottop < MAXFRAMES);
-	rootstack[roottop++] = numroots;
 	va_list args;
+	rootstack[roottop++] = numroots;
 	va_start(args, r);
-	for (object ** p = r; p != NULL; p = va_arg(args, object **)) {
-		assert(numroots < MAXROOTS);
+	for (object **p = r; p != NULL; p = va_arg(args, object **)) {
 		roots[numroots++] = p;
 	}
 	va_end(args);
