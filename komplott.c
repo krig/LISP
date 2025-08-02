@@ -82,10 +82,6 @@ const char* itos(long n) {
 	return intern_string(buf);
 }
 
-object *new_cfunc(cfunc func) {
-	return gc_alloc(T_CFUNC, (object *)func, NULL);
-}
-
 object *new_atom(const char *str) {
 	return gc_alloc(T_ATOM, (object *)intern_string(str), NULL);
 }
@@ -376,7 +372,7 @@ void defun(object *env, const char *name, cfunc fn) {
 	object *key = NULL, *val = NULL;
 	gc_protect(&env, &key, &val, NULL);
 	key = new_atom(name);
-	val = new_cfunc(fn);
+	val = gc_alloc(T_CFUNC, (object *)fn, NULL);
 	env_set(env, key, val);
 	gc_pop();
 }
