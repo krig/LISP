@@ -185,12 +185,13 @@ builtin_sub :: proc(args: ^Object) -> ^Object {
 }
 
 builtin_mul :: proc(args: ^Object) -> ^Object {
-	sum :int = 1
+	sum :i64 = 1
 	for cur := args; cur != nil; cur = cdr(cur) {
-		sum *= strconv.atoi(atom_text(car(cur)))
+		n, ok := strconv.parse_i64(atom_text(car(cur)))
+		sum *= n if ok else 0
 	}
-	buf: [16]byte
-	return new_atom(strconv.itoa(buf[:], sum))
+	buf: [40]byte
+	return new_atom(strconv.write_int(buf[:], sum, 10))
 }
 
 builtin_display :: proc(args: ^Object) -> ^Object {
