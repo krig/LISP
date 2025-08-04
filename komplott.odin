@@ -2,11 +2,11 @@ package main
 
 import "base:runtime"
 import "core:bufio"
-import "core:bytes"
 import "core:fmt"
 import "core:io"
 import "core:os"
 import "core:reflect"
+import "core:strconv"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
@@ -71,24 +71,20 @@ env_set :: proc(env, key, value: ^Object) -> (ret: ^Object, err: runtime.Allocat
 }
 
 list_find_pair :: proc(needle, haystack: ^Object) -> ^Object {
-	haystack := haystack
-	for haystack != nil {
-		if car(haystack) != nil && lisp_equal(needle, car(car(haystack))) {
-			return car(haystack)
+	for cur := haystack; cur != nil; cur = cdr(cur) {
+		pair := car(cur)
+		if pair != nil && lisp_equal(needle, car(pair)) {
+			return pair
 		}
-		haystack = cdr(haystack)
 	}
 	return nil
 }
 
 env_lookup :: proc(needle, haystack: ^Object) -> ^Object {
-	haystack := haystack
-	for haystack != nil {
-		pair := list_find_pair(needle, car(haystack))
-		if pair != nil {
+	for cur := haystack; cur != nil; cur = cdr(cur) {
+		if pair := list_find_pair(needle, car(cur)); pair != nil {
 			return cdr(pair)
 		}
-		haystack = cdr(haystack)
 	}
 	return nil
 }
@@ -96,11 +92,13 @@ env_lookup :: proc(needle, haystack: ^Object) -> ^Object {
 BuiltinSignature :: proc(^Object) -> ^Object
 
 car :: proc(obj: ^Object) -> ^Object {
-	return (obj.(Cons)).car
+	v, ok := obj.(Cons)
+	return v.car if ok else nil
 }
 
 cdr :: proc(obj: ^Object) -> ^Object {
-	return (obj.(Cons)).cdr
+	v, ok := obj.(Cons)
+	return v.cdr if ok else nil
 }
 
 
@@ -136,8 +134,9 @@ builtin_cons :: proc(args: ^Object) -> ^Object {
 }
 
 builtin_equal :: proc(args: ^Object) -> ^Object {
+	args := args
 	cmp := car(args)
-	for args := cdr(args); args != nil; args = cdr(args) {
+	for args = cdr(args); args != nil; args = cdr(args) {
 		if !lisp_equal(cmp, car(args)) {
 			return nil
 		}
@@ -156,19 +155,39 @@ builtin_pair :: proc(args: ^Object) -> ^Object {
 }
 
 builtin_null :: proc(args: ^Object) -> ^Object {
-	return car(args) == nil ? atom_t : nil
+	return atom_t if car(args) == nil else nil
 }
 
 builtin_sum :: proc(args: ^Object) -> ^Object {
-	return new_atom("0")
+	sum :int = 0
+	for i := args; i != nil; i = cdr(i) {
+		sum += strconv.atoi(atom_text(car(i)))
+	}
+	buf: [16]byte
+	return new_atom(strconv.itoa(buf[:], sum))
 }
 
 builtin_sub :: proc(args: ^Object) -> ^Object {
-	return new_atom("0")
+	n: int = 0
+	if cdr(args) == nil {
+		n = -strconv.atoi(atom_text(car(args)))
+	} else {
+		n = strconv.atoi(atom_text(car(args)))
+		for i := cdr(args); i != nil; i = cdr(i) {
+			n = n - strconv.atoi(atom_text(car(args)))
+		}
+	}
+	buf: [16]byte
+	return new_atom(strconv.itoa(buf[:], n))
 }
 
 builtin_mul :: proc(args: ^Object) -> ^Object {
-	return new_atom("0")
+	sum :int = 1
+	for cur := args; cur != nil; cur = cdr(cur) {
+		sum *= strconv.atoi(atom_text(car(cur)))
+	}
+	buf: [16]byte
+	return new_atom(strconv.itoa(buf[:], sum))
 }
 
 builtin_display :: proc(args: ^Object) -> ^Object {
@@ -198,7 +217,7 @@ token_peek: rune = ' '
 token_builder: strings.Builder
 
 read_rune :: proc() -> (ret: rune, err: io.Error) {
-	r, n := bufio.reader_read_rune(&lisp_reader) or_return
+	r, _ := bufio.reader_read_rune(&lisp_reader) or_return
 	ret = r
 	return
 }
@@ -206,12 +225,12 @@ read_rune :: proc() -> (ret: rune, err: io.Error) {
 is_atomchar :: proc(r: rune) -> bool {
 	return (u32(r) >= '!' && u32(r) <= '\'') ||
 		(u32(r) >= '*' && u32(r) <= '~') ||
-		unicode.is_alpha(r);
+		unicode.is_alpha(r)
 }
 
 match_number :: proc(s: string) -> bool {
 	start := 0
-	if len(s) > 0 && (s[0] == '+' || s[1] == '-') {
+	if len(s) > 0 && (s[0] == '+' || s[0] == '-') {
 		start = 1
 	}
 	for ch in s[start:] {
@@ -230,8 +249,7 @@ read_token :: proc() -> (tok: string, err: io.Error) {
 	if token_peek == '(' || token_peek == ')' {
 		strings.write_rune(&token_builder, token_peek)
 		token_peek = read_rune() or_return
-	}
-	else {
+	} else {
 		for is_atomchar(token_peek) {
 			strings.write_rune(&token_builder, token_peek)
 			token_peek = read_rune() or_return
@@ -269,7 +287,8 @@ lisp_read_list :: proc(tok: string) -> (ret: ^Object, err: io.Error) {
 	}
 	obj, obj2, tmp: ^Object = ---, ---, ---
 	obj = lisp_read_obj(tok) or_return
-	tok := read_token() or_return
+	tok := tok
+	tok = read_token() or_return
 	if len(tok) == 1 && tok[0] == '.' {
 		tok = read_token() or_return
 		tmp = lisp_read_obj(tok) or_return
@@ -302,7 +321,8 @@ lisp_read :: proc() -> (obj: ^Object, err: io.Error) {
 }
 
 atom_text :: proc(atom: ^Object) -> string {
-	return atom.(Atom)
+	v, ok := atom.(Atom)
+	return v if ok else ""
 }
 
 list_reverse :: proc(lst: ^Object) -> ^Object {
@@ -332,10 +352,10 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 		if expr == nil {
 			return expr
 		}
-		_, isatom := expr.(Atom)
-		_, iscons := expr.(Cons)
+		asatom, isatom := expr.(Atom)
+		ascons, iscons := expr.(Cons)
 		if isatom {
-			if match_number(atom_text(expr)) {
+			if match_number(asatom) {
 				return expr
 			}
 			return env_lookup(expr, env)
@@ -344,11 +364,11 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 			return expr
 		}
 
-		head := car(expr)
+		head := ascons.car
 		if atom_text(head) == TQUOTE {
-			return car(cdr(expr))
+			return car(ascons.cdr)
 		} else if atom_text(head) == TCOND {
-			for item := cdr(expr); item != nil; item = cdr(item) {
+			for item := ascons.cdr; item != nil; item = cdr(item) {
 				cond := car(item)
 				if lisp_eval(car(cond), env) != nil {
 					expr = car(cdr(cond))
@@ -357,13 +377,13 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 			}
 			return nil
 		} else if atom_text(head) == TDEFINE {
-			name := car(cdr(expr))
-			value := lisp_eval(car(cdr(cdr(expr))), env)
+			name := car(ascons.cdr)
+			value := lisp_eval(car(cdr(ascons.cdr)), env)
 			env_set(env, name, value)
 			return value
 		} else if atom_text(head) == TLAMBDA {
 			// turn cdr(expr) into a lambda
-			ldata := cdr(expr).(Cons)
+			ldata := ascons.cdr.(Cons)
 			ret := new(Object)
 			ret^ = Lambda{ldata.car, ldata.cdr}
 			return ret
@@ -409,31 +429,41 @@ lisp_print :: proc(obj: ^Object) {
 		fmt.print("()")
 		return
 	}
-	switch v in obj^ {
-	case Atom:
-		fmt.printf("%s", v)
-	case Builtin:
-		fmt.printf("<C@%v>", v)
-	case Lambda:
-		fmt.print("<lambda")
-		lisp_print(v.args)
-		fmt.print(">")
-	case Cons:
-		fmt.print("(")
-		for {
+	inlist := false
+	outer: for {
+		switch v in obj^ {
+		case Atom:
+			fmt.printf("%s", v)
+		case Builtin:
+			fmt.printf("<C@%v>", v)
+		case Lambda:
+			fmt.print("<lambda ")
+			lisp_print(v.args)
+			fmt.print(" ")
+			lisp_print(v.body)
+			fmt.print(">")
+		case Cons:
+			if !inlist {
+				fmt.print("(")
+				inlist = true
+			}
 			lisp_print(v.car)
 			if v.cdr == nil {
-				break
+				break outer
 			}
 			fmt.print(" ")
 			_, iscons := v.cdr.(Cons)
 			if !iscons {
 				fmt.print(". ")
 				lisp_print(v.cdr)
-				break
+				break outer
 			}
 			obj = v.cdr
+			continue outer
 		}
+		break outer
+	}
+	if inlist {
 		fmt.print(")")
 	}
 }
@@ -459,27 +489,27 @@ main :: proc() {
 	env_set(env, atom_t, atom_t)
 	env_set(env, atom_f, nil)
 
-	define_builtin(env, "car", builtin_car);
-	define_builtin(env, "cdr", builtin_cdr);
-	define_builtin(env, "cons", builtin_cons);
-	define_builtin(env, "equal?", builtin_equal);
-	define_builtin(env, "pair?", builtin_pair);
-	define_builtin(env, "null?", builtin_null);
-	define_builtin(env, "+", builtin_sum);
-	define_builtin(env, "-", builtin_sub);
-	define_builtin(env, "*", builtin_mul);
-	define_builtin(env, "display", builtin_display);
-	define_builtin(env, "newline", builtin_newline);
-	define_builtin(env, "read", builtin_read);
+	define_builtin(env, "car", builtin_car)
+	define_builtin(env, "cdr", builtin_cdr)
+	define_builtin(env, "cons", builtin_cons)
+	define_builtin(env, "equal?", builtin_equal)
+	define_builtin(env, "pair?", builtin_pair)
+	define_builtin(env, "null?", builtin_null)
+	define_builtin(env, "+", builtin_sum)
+	define_builtin(env, "-", builtin_sub)
+	define_builtin(env, "*", builtin_mul)
+	define_builtin(env, "display", builtin_display)
+	define_builtin(env, "newline", builtin_newline)
+	define_builtin(env, "read", builtin_read)
 
 	f: os.Handle
 	buffer: [1024]byte
 
 	if len(os.args) > 1 {
 		ff, ferr := os.open(os.args[1])
-		if ferr != 0 {
+		if ferr != nil {
 			// handle error appropriately
-			fmt.println("Error: failed to open file")
+			fmt.printfln("Error: failed to open file (Error: %v)", ferr)
 			return
 		}
 		f = ff

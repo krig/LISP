@@ -1,3 +1,5 @@
+(cond ((equal? 1 0) (display 100) (display 200)))
+
 (define cadr (lambda (c) (car (cdr c))))
 (define cdar (lambda (c) (cdr (car c))))
 (define caar (lambda (c) (car (car c))))
