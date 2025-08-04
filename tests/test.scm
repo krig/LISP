@@ -1,5 +1,3 @@
-(cond ((equal? 1 0) (display 100) (display 200)))
-
 (define cadr (lambda (c) (car (cdr c))))
 (define cdar (lambda (c) (cdr (car c))))
 (define caar (lambda (c) (car (car c))))
@@ -23,6 +21,12 @@
 (define else #t)
 
 (define displayln (lambda (x) (display x) (newline)))
+
+(displayln 100)
+(newline)
+
+(cond ((equal? 1 0) (displayln 100)) (else (displayln 200)))
+(cond ((equal? 1 1) (displayln 100)) (else (displayln 200)))
 
 (define assert (lambda (expr expect)
                  (cond ((equal? expr expect)

@@ -43,8 +43,7 @@ interned: strings.Intern
 lisp_reader: bufio.Reader
 
 intern_string :: proc(s: string) -> (ret: string, err: runtime.Allocator_Error) #optional_allocator_error {
-	ret = strings.intern_get(&interned, s) or_return
-	return
+	return strings.intern_get(&interned, s)
 }
 
 new_atom :: proc(s: string) -> (ret: ^Object, err: runtime.Allocator_Error) #optional_allocator_error {
@@ -210,7 +209,11 @@ builtin_read :: proc(args: ^Object) -> ^Object {
 }
 
 define_builtin :: proc(env: ^Object, name: string, impl: BuiltinSignature) -> (runtime.Allocator_Error) {
-	return nil
+	key := new_atom(name)
+	val := new(Object)
+	val^ = impl
+	_, err := env_set(env, key, val)
+	return err
 }
 
 token_peek: rune = ' '
@@ -230,7 +233,7 @@ is_atomchar :: proc(r: rune) -> bool {
 
 match_number :: proc(s: string) -> bool {
 	start := 0
-	if len(s) > 0 && (s[0] == '+' || s[0] == '-') {
+	if len(s) > 1 && (s[0] == '+' || s[0] == '-') {
 		start = 1
 	}
 	for ch in s[start:] {
@@ -391,6 +394,15 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 
 
 		fn := lisp_eval(head, env)
+		if fn == nil {
+			fmt.println("Error: cannot evaluate head in current env!")
+			fmt.println("head:")
+			lisp_print(head)
+			fmt.println("\nenv:")
+			lisp_print(env)
+			fmt.println("")
+			return nil
+		}
 		switch tv in fn {
 		case Builtin:
 			args: ^Object = nil
@@ -402,22 +414,24 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 		case Lambda:
 			callenv := new_cons(nil, env)
 			args := tv.args
-			for params := cdr(expr); params != nil; params = cdr(params) {
-				args = cdr(args)
+			for params := cdr(expr); params != nil; {
 				param := lisp_eval(car(params), env)
 				env_set(callenv, car(args), param)
+
+				params = cdr(params)
+				args = cdr(args)
 			}
-			item: ^Object = nil
-			for item = cdr(fn); item != nil; item = cdr(item) {
+			for item := cdr(fn); item != nil; item = cdr(item) {
 				if cdr(item) == nil {
 					expr = car(item)
 					env = callenv
 					continue restart
 				}
+				lisp_eval(car(item), callenv)
 			}
-			lisp_eval(car(item), callenv)
 		case Cons, Atom:
 			fmt.println("Error: calling non-function as function")
+			runtime.trap()
 		}
 		return nil
 	}
@@ -527,6 +541,7 @@ main :: proc() {
 			break
 		}
 		obj = lisp_eval(obj, env)
+		fmt.print("result: ")
 		lisp_print(obj)
 		fmt.println()
 	}
