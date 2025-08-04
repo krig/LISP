@@ -158,26 +158,30 @@ builtin_null :: proc(args: ^Object) -> ^Object {
 }
 
 builtin_sum :: proc(args: ^Object) -> ^Object {
-	sum :int = 0
+	sum :i64 = 0
 	for i := args; i != nil; i = cdr(i) {
-		sum += strconv.atoi(atom_text(car(i)))
+		n, ok := strconv.parse_i64(atom_text(car(i)))
+		sum += n if ok else 0
 	}
-	buf: [16]byte
-	return new_atom(strconv.itoa(buf[:], sum))
+	buf: [40]byte
+	return new_atom(strconv.write_int(buf[:], sum, 10))
 }
 
 builtin_sub :: proc(args: ^Object) -> ^Object {
-	n: int = 0
+	sum: i64 = 0
 	if cdr(args) == nil {
-		n = -strconv.atoi(atom_text(car(args)))
+		n, ok := strconv.parse_i64(atom_text(car(args)))
+		sum = -n if ok else 0
 	} else {
-		n = strconv.atoi(atom_text(car(args)))
+		n, ok := strconv.parse_i64(atom_text(car(args)))
+		sum = n if ok else 0
 		for i := cdr(args); i != nil; i = cdr(i) {
-			n = n - strconv.atoi(atom_text(car(args)))
+			n, ok = strconv.parse_i64(atom_text(car(i)))
+			sum -= n if ok else 0
 		}
 	}
-	buf: [16]byte
-	return new_atom(strconv.itoa(buf[:], n))
+	buf: [40]byte
+	return new_atom(strconv.write_int(buf[:], sum, 10))
 }
 
 builtin_mul :: proc(args: ^Object) -> ^Object {
