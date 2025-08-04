@@ -421,7 +421,7 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 				params = cdr(params)
 				args = cdr(args)
 			}
-			for item := cdr(fn); item != nil; item = cdr(item) {
+			for item := tv.body; item != nil; item = cdr(item) {
 				if cdr(item) == nil {
 					expr = car(item)
 					env = callenv
