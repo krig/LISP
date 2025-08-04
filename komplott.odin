@@ -520,19 +520,19 @@ main :: proc() {
 	buffer: [1024]byte
 
 	if len(os.args) > 1 {
-		ff, ferr := os.open(os.args[1])
+		ferr: os.Error
+		f, ferr = os.open(os.args[1])
 		if ferr != nil {
 			// handle error appropriately
 			fmt.printfln("Error: failed to open file (Error: %v)", ferr)
 			return
 		}
-		f = ff
-		bufio.reader_init_with_buf(&lisp_reader, os.stream_from_handle(f), buffer[:])
 	} else {
-		bufio.reader_init_with_buf(&lisp_reader, os.stream_from_handle(os.stdin), buffer[:])
+		f = os.stdin
 	}
 
-	defer os.close(f)
+	bufio.reader_init_with_buf(&lisp_reader, os.stream_from_handle(f), buffer[:])
+	defer if f != os.stdin { os.close(f) }
 	defer bufio.reader_destroy(&lisp_reader)
 
 	for {
