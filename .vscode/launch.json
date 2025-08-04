@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb-dap",
+            "request": "launch",
+            "name": "Debug",
+            "program": "${workspaceRoot}/komplott",
+            "args": ["tests/test.scm"],
+            "env": [],
+            "cwd": "${workspaceRoot}"
+        }
+    ]
+}
