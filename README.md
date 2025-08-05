@@ -19,7 +19,7 @@ to make it a cleaner solution.
 When I posted this to lobste.rs, gingerBill (creator of Odin) was kind
 enough to make a more direct translation of the C code into Odin, which
 can be viewed in this
-(gist: komplott.odin)[https://gist.github.com/gingerBill/622bf4dd5208e12076213a41053259cb].
+[gist: komplott.odin](https://gist.github.com/gingerBill/622bf4dd5208e12076213a41053259cb).
 
 ## Features
 
