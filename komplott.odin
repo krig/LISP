@@ -1,15 +1,25 @@
-package main
+package komplott
 
+import "base:intrinsics"
 import "base:runtime"
 import "core:bufio"
 import "core:fmt"
 import "core:io"
+import "core:mem"
 import "core:os"
 import "core:reflect"
 import "core:strconv"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
+
+import back "vendor/back"
+
+
+ITOS_BYTES :: 40
+HEAP_SIZE :: 16 * mem.Kilobyte
+MAX_ROOTS :: 500
+MAX_FRAMES :: 50
 
 TQUOTE: string
 TLAMBDA: string
@@ -39,6 +49,15 @@ Object :: union {
 	Lambda,
 }
 
+heap: []Object
+tospace, fromspace, allocptr: ^Object
+roots: [MAX_ROOTS]^^Object
+rootstack: [MAX_FRAMES]uint
+roottop: uint
+numroots: uint
+FWDMARKER: Object = ""
+
+
 interned: strings.Intern
 lisp_reader: bufio.Reader
 
@@ -47,22 +66,28 @@ intern_string :: proc(s: string) -> (ret: string, err: runtime.Allocator_Error) 
 }
 
 new_atom :: proc(s: string) -> (ret: ^Object, err: runtime.Allocator_Error) #optional_allocator_error {
-	ret = new(Object) or_return
+	ret = gc_alloc()
 	atom := intern_string(s) or_return
 	ret^ = Atom(atom)
 	return
 }
 
 new_cons :: proc(car, cdr: ^Object) -> (ret: ^Object, err: runtime.Allocator_Error) #optional_allocator_error {
-	ret = new(Object) or_return
+	car, cdr := car, cdr
+	gc_protect(&car, &cdr)
+	defer gc_pop()
+	ret = gc_alloc()
 	ret^ = Cons{car, cdr}
 	return
 }
 
 env_set :: proc(env, key, value: ^Object) -> (ret: ^Object, err: runtime.Allocator_Error) #optional_allocator_error {
-	econs := env.(Cons)
+	env, key, value := env, key, value
+	gc_protect(&env, &key, &value)
+	defer gc_pop()
 	pair := new_cons(key, value) or_return
-	frame := new_cons(pair, econs.car) or_return
+	frame := new_cons(pair, car(env)) or_return
+	econs := env.(Cons)
 	econs.car = frame
 	env^ = econs
 	ret = env
@@ -91,13 +116,174 @@ env_lookup :: proc(needle, haystack: ^Object) -> ^Object {
 BuiltinSignature :: proc(^Object) -> ^Object
 
 car :: proc(obj: ^Object) -> ^Object {
-	v, ok := obj.(Cons)
-	return v.car if ok else nil
+	c: Cons
+	l: Lambda
+	ok: bool
+	if obj == nil { return nil }
+	c, ok = obj.(Cons)
+	if ok { return c.car }
+	l, ok = obj.(Lambda)
+	if ok { return l.args }
+	return nil
 }
 
 cdr :: proc(obj: ^Object) -> ^Object {
-	v, ok := obj.(Cons)
-	return v.cdr if ok else nil
+	c: Cons
+	l: Lambda
+	ok: bool
+	if obj == nil { return nil }
+	c, ok = obj.(Cons)
+	if ok { return c.cdr }
+	l, ok = obj.(Lambda)
+	if ok { return l.body }
+	return nil
+}
+
+
+gc_init :: proc() -> (err: runtime.Allocator_Error) {
+	heap = make([]Object, HEAP_SIZE * 2) or_return
+	fromspace = &heap[0]
+	allocptr = fromspace
+	tospace = &heap[HEAP_SIZE]
+	numroots = 0
+	roottop = 0
+	return
+}
+
+gc_destroy :: proc() {
+	delete(heap)
+}
+
+in_tospace :: proc(p: ^Object) -> bool {
+	return uintptr(p) >= uintptr(tospace) && uintptr(p) < uintptr(tospace) + HEAP_SIZE*size_of(Object)
+}
+
+gc_copy :: proc(root: ^^Object) {
+	if root^ == nil {
+		return
+	}
+
+	if car(root^) == &FWDMARKER {
+		root^ = cdr(root^)
+	} else if in_tospace(root^) {
+		p := allocptr
+		allocptr = mem.ptr_offset(allocptr, 1)
+		mem.copy_non_overlapping(p, root^, size_of(Object))
+		root^^ = Cons{&FWDMARKER, p}
+		root^ = p
+	}
+}
+
+gc_collect :: proc() {
+	if !gc_full() {
+		return
+	}
+
+	fmt.println("==== GC ====")
+	fmt.printfln("fromspace: %p", fromspace)
+	fmt.printfln("tospace: %p", tospace)
+	fmt.printfln("allocptr - fromspace: %v", (uintptr(allocptr) - uintptr(fromspace)) / size_of(Object))
+	fmt.printfln("*** SWAP ***")
+
+	fromspace, tospace = tospace, fromspace
+	allocptr = fromspace
+
+	fmt.printfln("fromspace: %p", fromspace)
+	fmt.printfln("tospace: %p", tospace)
+	fmt.printfln("allocptr: %p", allocptr)
+
+	fmt.printfln("Copying %v roots...", numroots)
+	for i :uint = 0; i < numroots; i += 1 {
+		gc_copy(roots[i])
+	}
+
+	fmt.println("Scanning fromspace...")
+	for scanptr := fromspace; scanptr < allocptr; scanptr = mem.ptr_offset(scanptr, 1) {
+		#partial switch _ in scanptr^ {
+		case Cons:
+			p: ^Cons = cast(^Cons)(scanptr)
+			gc_copy(&p.car)
+			gc_copy(&p.cdr)
+		case Lambda:
+			p: ^Lambda = cast(^Lambda)(scanptr)
+			gc_copy(&p.args)
+			gc_copy(&p.body)
+		}
+	}
+
+
+	fmt.println("==== GC COMPLETE ====")
+	fmt.printfln("allocptr - fromspace: %v", (uintptr(allocptr) - uintptr(fromspace)) / size_of(Object))
+	fmt.println("==== GC COMPLETE ====")
+	if gc_full() {
+		fmt.eprintln("Out of memory")
+		runtime.trap()
+	}
+}
+
+gc_full :: proc() -> bool {
+	next_alloc_pos := uintptr(allocptr) + size_of(^Object)
+	space_end := uintptr(fromspace) + HEAP_SIZE * size_of(^Object)
+	return next_alloc_pos >= space_end
+}
+
+in_live :: proc(p: ^Object) -> bool {
+	if p == nil { return true }
+	return uintptr(p) >= uintptr(fromspace) && uintptr(p) < uintptr(allocptr)
+}
+
+gc_validate :: proc() {
+	// check the heap consistency
+	allocpos := (uintptr(allocptr) - uintptr(fromspace)) / size_of(Object)
+	assert(allocpos >= 0, "allocpos is negative")
+
+	offs :uintptr = 0 if uintptr(allocptr) < (uintptr)(&heap[HEAP_SIZE]) else HEAP_SIZE
+
+	for i :uintptr = offs; i < offs + allocpos; i += 1 {
+		o := heap[i]
+		switch v in o {
+		case Cons:
+			assert(in_live(v.car), "bad car")
+			assert(in_live(v.cdr), "bad cdr")
+		case Lambda:
+			assert(in_live(v.args), "bad args")
+			assert(in_live(v.body), "bad body")
+		case Atom:
+			// check that atom is interned
+			assert(v in interned.entries, "not interned")
+		case Builtin:
+			// check that builtin is in BUILTINS.impl
+			found := false
+			for def in BUILTINS {
+				if v == def.impl {
+					found = true
+					break
+				}
+			}
+			assert(found, "valid builtin")
+		}
+	}
+}
+
+gc_alloc :: proc() -> (ret: ^Object) {
+	gc_validate()
+	gc_collect()
+	ret, allocptr = allocptr, mem.ptr_offset(allocptr, 1)
+	return
+}
+
+gc_protect :: proc(ptrs: ..^^Object) {
+	rootstack[roottop] = numroots
+	roottop += 1
+	for p in ptrs {
+		roots[numroots] = p
+		numroots += 1
+	}
+}
+
+gc_pop :: proc() {
+	roottop -= 1
+	numroots = rootstack[roottop]
 }
 
 
@@ -163,7 +349,7 @@ builtin_sum :: proc(args: ^Object) -> ^Object {
 		n, ok := strconv.parse_i64(atom_text(car(i)))
 		sum += n if ok else 0
 	}
-	buf: [40]byte
+	buf: [ITOS_BYTES]byte
 	return new_atom(strconv.write_int(buf[:], sum, 10))
 }
 
@@ -180,7 +366,7 @@ builtin_sub :: proc(args: ^Object) -> ^Object {
 			sum -= n if ok else 0
 		}
 	}
-	buf: [40]byte
+	buf: [ITOS_BYTES]byte
 	return new_atom(strconv.write_int(buf[:], sum, 10))
 }
 
@@ -190,7 +376,7 @@ builtin_mul :: proc(args: ^Object) -> ^Object {
 		n, ok := strconv.parse_i64(atom_text(car(cur)))
 		sum *= n if ok else 0
 	}
-	buf: [40]byte
+	buf: [ITOS_BYTES]byte
 	return new_atom(strconv.write_int(buf[:], sum, 10))
 }
 
@@ -207,18 +393,49 @@ builtin_newline :: proc(args: ^Object) -> ^Object {
 builtin_read :: proc(args: ^Object) -> ^Object {
 	obj, err := lisp_read()
 	if err != nil {
-		fmt.printf("Error: %v", err)
+		fmt.eprintf("Error: %v", err)
 		return nil
 	}
 	return obj
 }
 
-define_builtin :: proc(env: ^Object, name: string, impl: BuiltinSignature) -> (runtime.Allocator_Error) {
-	key := new_atom(name)
-	val := new(Object)
-	val^ = impl
-	_, err := env_set(env, key, val)
-	return err
+BuiltinDef :: struct {
+	name: string,
+	impl: BuiltinSignature,
+}
+
+BUILTINS :: []BuiltinDef {
+	{ "car", builtin_car },
+	{ "cdr", builtin_cdr },
+	{ "cons", builtin_cons },
+	{ "equal?", builtin_equal },
+	{ "pair?", builtin_pair },
+	{ "null?", builtin_null },
+	{ "+", builtin_sum },
+	{ "-", builtin_sub },
+	{ "*", builtin_mul },
+	{ "display", builtin_display },
+	{ "newline", builtin_newline },
+	{ "read", builtin_read },
+}
+
+define_builtins :: proc(env: ^Object) -> (runtime.Allocator_Error) {
+	key: ^Object
+	val: ^Object
+	env := env
+	gc_protect(&key, &val, &env)
+	defer gc_pop()
+
+	for def in BUILTINS {
+		key = new_atom(def.name)
+		val = gc_alloc()
+		val^ = def.impl
+		_, err := env_set(env, key, val)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 token_peek: rune = ' '
@@ -271,7 +488,7 @@ read_token :: proc() -> (tok: string, err: io.Error) {
 	}
 	tokk, aerr := intern_string(strings.to_string(token_builder))
 	if aerr != nil {
-		fmt.printf("Error: %v\n", aerr)
+		fmt.eprintf("Error: %v\n", aerr)
 		return tokk, .Unknown
 	}
 	tok = tokk
@@ -293,7 +510,9 @@ lisp_read_list :: proc(tok: string) -> (ret: ^Object, err: io.Error) {
 		ret = nil
 		return
 	}
-	obj, obj2, tmp: ^Object = ---, ---, ---
+	obj, obj2, tmp: ^Object
+	gc_protect(&obj, &obj2, &tmp)
+	defer gc_pop()
 	obj = lisp_read_obj(tok) or_return
 	tok := tok
 	tok = read_token() or_return
@@ -306,7 +525,7 @@ lisp_read_list :: proc(tok: string) -> (ret: ^Object, err: io.Error) {
 			ret = obj2
 			return
 		}
-		fmt.println("Error: Malformed dotted cons")
+		fmt.eprintln("Error: Malformed dotted cons")
 		return nil, .Unknown
 	}
 	tmp = lisp_read_list(tok) or_return
@@ -324,7 +543,7 @@ lisp_read :: proc() -> (obj: ^Object, err: io.Error) {
 	if tok[0] != ')' {
 		return lisp_read_obj(tok)
 	}
-	fmt.println("Error: unexpected )")
+	fmt.eprintln("Error: unexpected )")
 	return nil, .Unknown
 }
 
@@ -357,13 +576,15 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 	expr := expr
 	env := env
 	restart: for {
+		assert(in_live(expr), "live expr")
+		assert(in_live(env), "live env")
 		if expr == nil {
 			return expr
 		}
-		asatom, isatom := expr.(Atom)
-		ascons, iscons := expr.(Cons)
+		_, isatom := expr.(Atom)
+		_, iscons := expr.(Cons)
 		if isatom {
-			if match_number(asatom) {
+			if match_number(expr.(Atom)) {
 				return expr
 			}
 			return env_lookup(expr, env)
@@ -372,12 +593,15 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 			return expr
 		}
 
-		head := ascons.car
+		head := car(expr)
 		if atom_text(head) == TQUOTE {
-			return car(ascons.cdr)
+			return car(cdr(expr))
 		} else if atom_text(head) == TCOND {
-			for item := ascons.cdr; item != nil; item = cdr(item) {
-				cond := car(item)
+			item, cond: ^Object
+			gc_protect(&expr, &env, &item, &cond)
+			defer gc_pop()
+			for item = cdr(expr); item != nil; item = cdr(item) {
+				cond = car(item)
 				if lisp_eval(car(cond), env) != nil {
 					expr = car(cdr(cond))
 					continue restart
@@ -385,48 +609,51 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 			}
 			return nil
 		} else if atom_text(head) == TDEFINE {
-			name := car(ascons.cdr)
-			value := lisp_eval(car(cdr(ascons.cdr)), env)
+			name, value: ^Object
+			gc_protect(&expr, &env, &name, &value)
+			defer gc_pop()
+			name = car(cdr(expr))
+			value = lisp_eval(car(cdr(cdr(expr))), env)
 			env_set(env, name, value)
 			return value
 		} else if atom_text(head) == TLAMBDA {
-			// turn cdr(expr) into a lambda
-			ldata := ascons.cdr.(Cons)
-			ret := new(Object)
-			ret^ = Lambda{ldata.car, ldata.cdr}
-			return ret
+			cd := cdr(expr)
+			cd^ = Lambda{ car(cd), cdr(cd) }
+			return cd
 		}
 
 
 		fn := lisp_eval(head, env)
+		gc_protect(&expr, &env, &fn)
+		defer gc_pop()
 		if fn == nil {
-			fmt.println("Error: cannot evaluate head in current env!")
-			fmt.println("head:")
-			lisp_print(head)
-			fmt.println("\nenv:")
-			lisp_print(env)
-			fmt.println("")
+			fmt.eprintln("Error: cannot evaluate head in current env!")
 			return nil
 		}
 		switch tv in fn {
 		case Builtin:
-			args: ^Object = nil
-			for params := cdr(expr); params != nil; params = cdr(params) {
-				param := lisp_eval(car(params), env)
+			args, params, param: ^Object
+			gc_protect(&args, &params, &param)
+			defer gc_pop()
+			for params = cdr(expr); params != nil; params = cdr(params) {
+				param = lisp_eval(car(params), env)
 				args = new_cons(param, args)
 			}
 			return tv(list_reverse(args))
 		case Lambda:
-			callenv := new_cons(nil, env)
-			args := tv.args
-			for params := cdr(expr); params != nil; {
-				param := lisp_eval(car(params), env)
+			args, callenv, params, param, item: ^Object
+			args, item = tv.args, tv.body
+			gc_protect(&args, &callenv, &params, &param, &item)
+			defer gc_pop()
+			callenv = new_cons(nil, env)
+			for params = cdr(expr); params != nil; {
+				param = lisp_eval(car(params), env)
 				env_set(callenv, car(args), param)
 
 				params = cdr(params)
 				args = cdr(args)
 			}
-			for item := tv.body; item != nil; item = cdr(item) {
+			for ; item != nil; item = cdr(item) {
 				if cdr(item) == nil {
 					expr = car(item)
 					env = callenv
@@ -435,7 +662,7 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 				lisp_eval(car(item), callenv)
 			}
 		case Cons, Atom:
-			fmt.println("Error: calling non-function as function")
+			fmt.eprintln("Error: calling non-function as function")
 			runtime.trap()
 		}
 		return nil
@@ -496,30 +723,36 @@ intern_names :: proc() -> (err: runtime.Allocator_Error) {
 }
 
 main :: proc() {
+	track: back.Tracking_Allocator
+	back.tracking_allocator_init(&track, context.allocator)
+	defer back.tracking_allocator_destroy(&track)
+	back.register_segfault_handler()
+	context.assertion_failure_proc = back.assertion_failure_proc
+
+	context.allocator = back.tracking_allocator(&track)
+	defer back.tracking_allocator_print_results(&track)
+
+	gc_init()
+	defer gc_destroy()
+
 	token_builder = strings.builder_make()
+	defer strings.builder_destroy(&token_builder)
 	strings.intern_init(&interned)
 	defer strings.intern_destroy(&interned)
 	intern_names()
 
-	env := new_cons(nil, nil)
+	env: ^Object
+	gc_protect(&env, &atom_t, &atom_f)
+	defer gc_pop()
+
+	env = new_cons(nil, nil)
 	atom_t = new_atom("#t")
 	atom_f = new_atom("#f")
 
 	env_set(env, atom_t, atom_t)
 	env_set(env, atom_f, nil)
 
-	define_builtin(env, "car", builtin_car)
-	define_builtin(env, "cdr", builtin_cdr)
-	define_builtin(env, "cons", builtin_cons)
-	define_builtin(env, "equal?", builtin_equal)
-	define_builtin(env, "pair?", builtin_pair)
-	define_builtin(env, "null?", builtin_null)
-	define_builtin(env, "+", builtin_sum)
-	define_builtin(env, "-", builtin_sub)
-	define_builtin(env, "*", builtin_mul)
-	define_builtin(env, "display", builtin_display)
-	define_builtin(env, "newline", builtin_newline)
-	define_builtin(env, "read", builtin_read)
+	define_builtins(env)
 
 	f: os.Handle
 	buffer: [1024]byte
@@ -529,7 +762,7 @@ main :: proc() {
 		f, ferr = os.open(os.args[1])
 		if ferr != nil {
 			// handle error appropriately
-			fmt.printfln("Error: failed to open file (Error: %v)", ferr)
+			fmt.eprintfln("Error: failed to open file (Error: %v)", ferr)
 			return
 		}
 	} else {
@@ -546,8 +779,9 @@ main :: proc() {
 			break
 		}
 		obj = lisp_eval(obj, env)
-		fmt.print("result: ")
-		lisp_print(obj)
-		fmt.println()
+		if f == os.stdin || ODIN_DEBUG {
+			lisp_print(obj)
+			fmt.println()
+		}
 	}
 }
