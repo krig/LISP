@@ -227,46 +227,7 @@ gc_full :: proc() -> bool {
 	return next_alloc_pos >= space_end
 }
 
-in_live :: proc(p: ^Object) -> bool {
-	if p == nil { return true }
-	return uintptr(p) >= uintptr(fromspace) && uintptr(p) < uintptr(allocptr)
-}
-
-gc_validate :: proc() {
-	// check the heap consistency
-	allocpos := (uintptr(allocptr) - uintptr(fromspace)) / size_of(Object)
-	assert(allocpos >= 0, "allocpos is negative")
-
-	offs :uintptr = 0 if uintptr(allocptr) < (uintptr)(&heap[HEAP_SIZE]) else HEAP_SIZE
-
-	for i :uintptr = offs; i < offs + allocpos; i += 1 {
-		o := heap[i]
-		switch v in o {
-		case Cons:
-			assert(in_live(v.car), "bad car")
-			assert(in_live(v.cdr), "bad cdr")
-		case Lambda:
-			assert(in_live(v.args), "bad args")
-			assert(in_live(v.body), "bad body")
-		case Atom:
-			// check that atom is interned
-			assert(v in interned.entries, "not interned")
-		case Builtin:
-			// check that builtin is in BUILTINS.impl
-			found := false
-			for def in BUILTINS {
-				if v == def.impl {
-					found = true
-					break
-				}
-			}
-			assert(found, "valid builtin")
-		}
-	}
-}
-
 gc_alloc :: proc() -> (ret: ^Object) {
-	gc_validate()
 	gc_collect()
 	ret, allocptr = allocptr, mem.ptr_offset(allocptr, 1)
 	return
@@ -576,8 +537,6 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 	expr := expr
 	env := env
 	restart: for {
-		assert(in_live(expr), "live expr")
-		assert(in_live(env), "live env")
 		if expr == nil {
 			return expr
 		}
