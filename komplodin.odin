@@ -5,7 +5,7 @@ import "core:bufio"
 import "core:fmt"
 import "core:io"
 import "core:mem"
-import "core:os"
+import os "core:os/os2"
 import "core:reflect"
 import "core:strconv"
 import "core:strings"
@@ -629,7 +629,7 @@ main :: proc() {
 
 	define_builtins(env)
 
-	f: os.Handle
+	f := os.stdin
 	buffer: [1024]byte
 
 	if len(os.args) > 1 {
@@ -640,11 +640,9 @@ main :: proc() {
 			fmt.eprintfln("Error: failed to open file (Error: %v)", ferr)
 			return
 		}
-	} else {
-		f = os.stdin
 	}
 
-	bufio.reader_init_with_buf(&lisp_reader, os.stream_from_handle(f), buffer[:])
+	bufio.reader_init_with_buf(&lisp_reader, f.stream, buffer[:])
 	defer if f != os.stdin { os.close(f) }
 	defer bufio.reader_destroy(&lisp_reader)
 
