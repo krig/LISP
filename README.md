@@ -28,6 +28,11 @@ can be viewed in this
 * Scheme-compliant enough for the test programs to be executable by
   GNU Guile (not sure if this is true anymore)
 * Copying semi-space garbage collector based on Cheney's Algorithm.
+
+  For more details on how it works, Andy Wingo has a great post
+  about this kind of garbage collector on
+  [his blog (wingolog)](https://www.wingolog.org/archives/2022/12/10/a-simple-semi-space-collector).
+
 * Limited tail call optimization (not true TCO; see `tests/true-tco.scm`).
 * Near-zero error handling.
 * Zero thread safety or security.
