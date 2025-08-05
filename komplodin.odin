@@ -1,4 +1,4 @@
-package komplott
+package komplodin
 
 import "base:intrinsics"
 import "base:runtime"
