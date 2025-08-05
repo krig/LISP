@@ -16,12 +16,13 @@ The LISP interpreter translated to [Odin](https://odin-lang.org) in
 language and am translating directly from C, so there are probably ways
 to make it a cleaner solution.
 
-### Features
+## Features
 
 * Single file implementation.
+* Less than 500 lines of code (~750 lines for the Odin version)
 * Scheme-compliant enough for the test programs to be executable by
-  GNU Guile.
-* Copying garbage collector based on Cheney's Algorithm.
+  GNU Guile (not sure if this is true anymore)
+* Copying semi-space garbage collector based on Cheney's Algorithm.
 * Limited tail call optimization (not true TCO; see `tests/true-tco.scm`).
 * Near-zero error handling.
 * Zero thread safety or security.
