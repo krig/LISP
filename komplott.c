@@ -27,7 +27,7 @@ const char *TQUOTE = NULL, *TLAMBDA = NULL, *TCOND = NULL, *TDEFINE = NULL;
 char        token_text[TOKEN_MAX];
 int         token_peek = 0;
 object     *atom_t = NULL;
-object *heap, *tospace, *fromspace, *allocptr, *scanptr;
+object *heap, *tospace, *fromspace, *allocptr;
 object ** roots[MAXROOTS];
 size_t rootstack[MAXFRAMES];
 size_t roottop, numroots;
@@ -395,12 +395,12 @@ void gc_collect(void) {
 	object *tmp = fromspace;
 	fromspace = tospace;
 	tospace = tmp;
-	allocptr = scanptr = fromspace;
+	allocptr = fromspace;
 
 	for (size_t i = 0; i < numroots; ++i)
 		gc_copy(roots[i]);
 
-	for (; scanptr < allocptr; ++scanptr)
+	for (object* scanptr = fromspace; scanptr < allocptr; ++scanptr)
 		if (scanptr->tag == T_CONS || scanptr->tag == T_LAMBDA) {
 			gc_copy(&(scanptr->car));
 			gc_copy(&(scanptr->cdr));
@@ -409,7 +409,7 @@ void gc_collect(void) {
 
 void gc_init(void) {
 	allocptr = fromspace = heap = malloc(sizeof(object) * HEAPSIZE * 2);
-	scanptr = tospace = heap + HEAPSIZE;
+	tospace = heap + HEAPSIZE;
 	numroots = roottop = 0;
 }
 
