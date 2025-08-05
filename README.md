@@ -1,4 +1,4 @@
-# komplott
+# komplott / komplodin
 
 A tribute to:
 
@@ -8,6 +8,13 @@ A tribute to:
 (as found in `paper/recursive.pdf`)
 
 A micro-subset of scheme / the original LISP in a single C file: `komplott.c`
+
+## ! New in 2025!
+
+The LISP interpreter translated to [Odin](https://odin-lang.org) in
+`komplodin.odin`. More lines of code, but I am less familiar with the
+language and am translating directly from C, so there are probably ways
+to make it a cleaner solution.
 
 ### Features
 
@@ -27,10 +34,15 @@ An implementation of the core of LISP 1.5 from 1962
 
 ## Instructions
 
-* To build the `komplott` executable, run `make`. The only dependency
+* To build the `komplott` executable, run `make komplott`. The only dependency
   aside from `make` is `gcc`.
-  
-* To run the LISP 1.5 interpreter and a couple of test cases, run `make lisp15`.
+
+* To build the Odin version (`komplodin`), run `make komplodin`. This depends on
+  the `vendor/back` submodule: `git submodule init && git submodule update`, as
+  well as the Odin compiler.
+
+* To run the LISP 1.5 interpreter and a couple of test cases, run `make test`.
+
 
 ## LISP 1.5
 
