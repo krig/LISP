@@ -19,7 +19,7 @@ to make it a cleaner solution.
 ## Features
 
 * Single file implementation.
-* Less than 500 lines of code (~750 lines for the Odin version)
+* Less than 500 lines of code (~660 lines for the Odin version)
 * Scheme-compliant enough for the test programs to be executable by
   GNU Guile (not sure if this is true anymore)
 * Copying semi-space garbage collector based on Cheney's Algorithm.
@@ -39,8 +39,7 @@ An implementation of the core of LISP 1.5 from 1962
   aside from `make` is `gcc`.
 
 * To build the Odin version (`komplodin`), run `make komplodin`. This depends on
-  the `vendor/back` submodule: `git submodule init && git submodule update`, as
-  well as the Odin compiler.
+  the Odin compiler.
 
 * To run the LISP 1.5 interpreter and a couple of test cases, run `make test`.
 

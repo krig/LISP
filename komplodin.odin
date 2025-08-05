@@ -1,6 +1,5 @@
 package komplodin
 
-import "base:intrinsics"
 import "base:runtime"
 import "core:bufio"
 import "core:fmt"
@@ -13,51 +12,25 @@ import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
 
-import back "vendor/back"
-
-
 ITOS_BYTES :: 40
 HEAP_SIZE :: 16 * mem.Kilobyte
 MAX_ROOTS :: 500
 MAX_FRAMES :: 50
 
-TQUOTE: string
-TLAMBDA: string
-TCOND: string
-TDEFINE: string
-atom_t: ^Object
-atom_f: ^Object
-
-Cons :: struct {
-	car: ^Object,
-	cdr: ^Object,
-}
-
+Cons :: struct { car, cdr: ^Object }
 Atom :: string
-
 Builtin :: proc(args: ^Object) -> ^Object
+Lambda :: struct { args, body: ^Object }
+Object :: union { Cons, Atom, Builtin, Lambda }
 
-Lambda :: struct {
-	args: ^Object,
-	body: ^Object,
-}
-
-Object :: union {
-	Cons,
-	Atom,
-	Builtin,
-	Lambda,
-}
-
+TQUOTE, TLAMBDA, TCOND, TDEFINE: string
+atom_t, atom_f: ^Object
 heap: []Object
 tospace, fromspace, allocptr: ^Object
 roots: [MAX_ROOTS]^^Object
 rootstack: [MAX_FRAMES]uint
-roottop: uint
-numroots: uint
+roottop, numroots: uint
 FWDMARKER: Object = ""
-
-
 interned: strings.Intern
 lisp_reader: bufio.Reader
 
@@ -113,45 +86,22 @@ env_lookup :: proc(needle, haystack: ^Object) -> ^Object {
 	return nil
 }
 
-BuiltinSignature :: proc(^Object) -> ^Object
 
 car :: proc(obj: ^Object) -> ^Object {
-	c: Cons
-	l: Lambda
-	ok: bool
-	if obj == nil { return nil }
-	c, ok = obj.(Cons)
-	if ok { return c.car }
-	l, ok = obj.(Lambda)
-	if ok { return l.args }
-	return nil
+	return (cast(^Cons)(obj)).car if obj != nil else nil
 }
 
 cdr :: proc(obj: ^Object) -> ^Object {
-	c: Cons
-	l: Lambda
-	ok: bool
-	if obj == nil { return nil }
-	c, ok = obj.(Cons)
-	if ok { return c.cdr }
-	l, ok = obj.(Lambda)
-	if ok { return l.body }
-	return nil
+	return (cast(^Cons)(obj)).cdr if obj != nil else nil
 }
 
 
 gc_init :: proc() -> (err: runtime.Allocator_Error) {
 	heap = make([]Object, HEAP_SIZE * 2) or_return
-	fromspace = &heap[0]
+	fromspace, tospace = &heap[0], &heap[HEAP_SIZE]
 	allocptr = fromspace
-	tospace = &heap[HEAP_SIZE]
-	numroots = 0
-	roottop = 0
+	numroots, roottop = 0, 0
 	return
-}
-
-gc_destroy :: proc() {
-	delete(heap)
 }
 
 in_tospace :: proc(p: ^Object) -> bool {
@@ -179,42 +129,22 @@ gc_collect :: proc() {
 		return
 	}
 
-	fmt.println("==== GC ====")
-	fmt.printfln("fromspace: %p", fromspace)
-	fmt.printfln("tospace: %p", tospace)
-	fmt.printfln("allocptr - fromspace: %v", (uintptr(allocptr) - uintptr(fromspace)) / size_of(Object))
-	fmt.printfln("*** SWAP ***")
-
 	fromspace, tospace = tospace, fromspace
 	allocptr = fromspace
 
-	fmt.printfln("fromspace: %p", fromspace)
-	fmt.printfln("tospace: %p", tospace)
-	fmt.printfln("allocptr: %p", allocptr)
-
-	fmt.printfln("Copying %v roots...", numroots)
 	for i :uint = 0; i < numroots; i += 1 {
 		gc_copy(roots[i])
 	}
 
-	fmt.println("Scanning fromspace...")
 	for scanptr := fromspace; scanptr < allocptr; scanptr = mem.ptr_offset(scanptr, 1) {
 		#partial switch _ in scanptr^ {
-		case Cons:
-			p: ^Cons = cast(^Cons)(scanptr)
+		case Cons, Lambda:
+			p := cast(^Cons)(scanptr)
 			gc_copy(&p.car)
 			gc_copy(&p.cdr)
-		case Lambda:
-			p: ^Lambda = cast(^Lambda)(scanptr)
-			gc_copy(&p.args)
-			gc_copy(&p.body)
 		}
 	}
 
-
-	fmt.println("==== GC COMPLETE ====")
-	fmt.printfln("allocptr - fromspace: %v", (uintptr(allocptr) - uintptr(fromspace)) / size_of(Object))
-	fmt.println("==== GC COMPLETE ====")
 	if gc_full() {
 		fmt.eprintln("Out of memory")
 		runtime.trap()
@@ -362,7 +292,7 @@ builtin_read :: proc(args: ^Object) -> ^Object {
 
 BuiltinDef :: struct {
 	name: string,
-	impl: BuiltinSignature,
+	impl: Builtin,
 }
 
 BUILTINS :: []BuiltinDef {
@@ -381,15 +311,13 @@ BUILTINS :: []BuiltinDef {
 }
 
 define_builtins :: proc(env: ^Object) -> (runtime.Allocator_Error) {
-	key: ^Object
-	val: ^Object
+	key, val: ^Object
 	env := env
 	gc_protect(&key, &val, &env)
 	defer gc_pop()
 
 	for def in BUILTINS {
-		key = new_atom(def.name)
-		val = gc_alloc()
+		key, val = new_atom(def.name), gc_alloc()
 		val^ = def.impl
 		_, err := env_set(env, key, val)
 		if err != nil {
@@ -415,10 +343,7 @@ is_atomchar :: proc(r: rune) -> bool {
 }
 
 match_number :: proc(s: string) -> bool {
-	start := 0
-	if len(s) > 1 && (s[0] == '+' || s[0] == '-') {
-		start = 1
-	}
+	start := 1 if len(s) > 1 && (s[0] == '+' || s[0] == '-') else 0
 	for ch in s[start:] {
 		if !unicode.is_digit(ch) {
 			return false
@@ -447,12 +372,12 @@ read_token :: proc() -> (tok: string, err: io.Error) {
 	if token_peek == utf8.RUNE_ERROR {
 		return "", .EOF
 	}
-	tokk, aerr := intern_string(strings.to_string(token_builder))
+	aerr: runtime.Allocator_Error
+	tok, aerr = intern_string(strings.to_string(token_builder))
 	if aerr != nil {
 		fmt.eprintf("Error: %v\n", aerr)
-		return tokk, .Unknown
+		return tok, .Unknown
 	}
-	tok = tokk
 	return
 }
 
@@ -682,17 +607,8 @@ intern_names :: proc() -> (err: runtime.Allocator_Error) {
 }
 
 main :: proc() {
-	track: back.Tracking_Allocator
-	back.tracking_allocator_init(&track, context.allocator)
-	defer back.tracking_allocator_destroy(&track)
-	back.register_segfault_handler()
-	context.assertion_failure_proc = back.assertion_failure_proc
-
-	context.allocator = back.tracking_allocator(&track)
-	defer back.tracking_allocator_print_results(&track)
-
 	gc_init()
-	defer gc_destroy()
+	defer delete(heap)
 
 	token_builder = strings.builder_make()
 	defer strings.builder_destroy(&token_builder)
