@@ -21,10 +21,15 @@ enough to make a more direct translation of the C code into Odin, which
 can be viewed in this
 [gist: komplott.odin](https://gist.github.com/gingerBill/622bf4dd5208e12076213a41053259cb).
 
+Since the lobste.rs posting, I have tweaked the Odin version a bit more,
+and so it differs from the C version quite a bit in the implementation
+details. I've tried to keep the output and functionality of the two
+programs the same though.
+
 ## Features
 
 * Single file implementation.
-* Less than 500 lines of code (~660 lines for the Odin version)
+* Less than 500 lines of code (~600 lines for the Odin version)
 * Scheme-compliant enough for the test programs to be executable by
   GNU Guile (not sure if this is true anymore)
 * Copying semi-space garbage collector based on Cheney's Algorithm.
