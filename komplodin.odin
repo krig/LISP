@@ -20,9 +20,8 @@ Tag :: enum u8 { Cell, Fwd, Builtin, Lambda, Symbol, Int }
 Builtin :: #type proc(^Cons) -> ^Cons
 
 TQUOTE, TLAMBDA, TCOND, TDEFINE: string
-atom_t, atom_f: ^Cons
+atom_t, atom_f, tospace, fromspace, allocptr: ^Cons
 heap: []Cons
-tospace, fromspace, allocptr: ^Cons
 roots: [MAX_ROOTS]^^Cons
 rootstack: [MAX_FRAMES]uint
 roottop, numroots: uint
@@ -82,9 +81,8 @@ env_set :: proc(env, key, value: ^Cons) -> ^Cons {
 env_lookup :: proc(needle, haystack: ^Cons) -> ^Cons {
 	for cur := haystack; cur != nil; cur = cur.cdr {
 		for item := cur.car; item != nil; item = item.cdr {
-			pair := item.car
-			if pair != nil && lisp_equal(needle, pair.car) {
-				return pair.cdr
+			if item.car != nil && lisp_equal(needle, item.car.car) {
+				return item.car.cdr
 			}
 		}
 	}
@@ -196,12 +194,7 @@ builtin_equal :: proc(args: ^Cons) -> ^Cons {
 }
 
 builtin_pair :: proc(args: ^Cons) -> ^Cons {
-	if args.car != nil {
-		if cons_tag(args.car) == .Cell {
-			return atom_t
-		}
-	}
-	return nil
+	return atom_t if args.car != nil && cons_tag(args.car) == .Cell else nil
 }
 
 builtin_null :: proc(args: ^Cons) -> ^Cons {
@@ -217,12 +210,10 @@ builtin_sum :: proc(args: ^Cons) -> ^Cons {
 }
 
 builtin_sub :: proc(args: ^Cons) -> ^Cons {
-	sum: int = 0
+	sum := int(uintptr(args.car.cdr))
 	if args.cdr == nil {
-		n := int(uintptr(args.car.cdr))
-		sum = -n
+		sum = -sum
 	} else {
-		sum = int(uintptr(args.car.cdr))
 		for i := args.cdr; i != nil; i = i.cdr {
 			sum -= int(uintptr(i.car.cdr))
 		}
@@ -233,8 +224,7 @@ builtin_sub :: proc(args: ^Cons) -> ^Cons {
 builtin_mul :: proc(args: ^Cons) -> ^Cons {
 	sum :int = 1
 	for cur := args; cur != nil; cur = cur.cdr {
-		n := int(uintptr(cur.car.cdr))
-		sum *= n
+		sum *= int(uintptr(cur.car.cdr))
 	}
 	return new_number(sum)
 }
@@ -252,18 +242,13 @@ builtin_newline :: proc(args: ^Cons) -> ^Cons {
 builtin_read :: proc(args: ^Cons) -> ^Cons {
 	obj, err := lisp_read()
 	if err != nil {
-		fmt.eprintf("Error: %v", err)
+		fmt.eprintfln("Error: %v", err)
 		return nil
 	}
 	return obj
 }
 
-BuiltinDef :: struct {
-	name: string,
-	impl: Builtin,
-}
-
-BUILTINS :: []BuiltinDef {
+BUILTINS :: []struct { name: string, impl: Builtin } {
 	{ "car", builtin_car },
 	{ "cdr", builtin_cdr },
 	{ "cons", builtin_cons },
