@@ -34,13 +34,9 @@ FWDMARKER: Object = ""
 interned: strings.Intern
 lisp_reader: bufio.Reader
 
-intern_string :: proc(s: string) -> (ret: string, err: runtime.Allocator_Error) #optional_allocator_error {
-	return strings.intern_get(&interned, s)
-}
-
 new_atom :: proc(s: string) -> (ret: ^Object, err: runtime.Allocator_Error) #optional_allocator_error {
 	ret = gc_alloc()
-	atom := intern_string(s) or_return
+	atom := strings.intern_get(&interned, s) or_return
 	ret^ = Atom(atom)
 	return
 }
@@ -63,24 +59,16 @@ env_set :: proc(env, key, value: ^Object) -> (ret: ^Object, err: runtime.Allocat
 	econs := env.(Cons)
 	econs.car = frame
 	env^ = econs
-	ret = env
-	return
-}
-
-list_find_pair :: proc(needle, haystack: ^Object) -> ^Object {
-	for cur := haystack; cur != nil; cur = cdr(cur) {
-		pair := car(cur)
-		if pair != nil && lisp_equal(needle, car(pair)) {
-			return pair
-		}
-	}
-	return nil
+	return env, nil
 }
 
 env_lookup :: proc(needle, haystack: ^Object) -> ^Object {
 	for cur := haystack; cur != nil; cur = cdr(cur) {
-		if pair := list_find_pair(needle, car(cur)); pair != nil {
-			return cdr(pair)
+		for item := car(cur); item != nil; item = cdr(item) {
+			pair := car(item)
+			if pair != nil && lisp_equal(needle, car(pair)) {
+				return cdr(pair)
+			}
 		}
 	}
 	return nil
@@ -176,7 +164,6 @@ gc_pop :: proc() {
 	roottop -= 1
 	numroots = rootstack[roottop]
 }
-
 
 lisp_equal :: proc(a, b: ^Object) -> bool {
 	if a == b { return true }
@@ -372,12 +359,7 @@ read_token :: proc() -> (tok: string, err: io.Error) {
 	if token_peek == utf8.RUNE_ERROR {
 		return "", .EOF
 	}
-	aerr: runtime.Allocator_Error
-	tok, aerr = intern_string(strings.to_string(token_builder))
-	if aerr != nil {
-		fmt.eprintf("Error: %v\n", aerr)
-		return tok, .Unknown
-	}
+	tok, _ = strings.intern_get(&interned, strings.to_string(token_builder))
 	return
 }
 
@@ -392,6 +374,7 @@ lisp_read_obj :: proc(tok: string) -> (obj: ^Object, err: io.Error) {
 }
 
 lisp_read_list :: proc(tok: string) -> (ret: ^Object, err: io.Error) {
+	tok := tok
 	if tok[0] == ')' {
 		ret = nil
 		return
@@ -400,7 +383,6 @@ lisp_read_list :: proc(tok: string) -> (ret: ^Object, err: io.Error) {
 	gc_protect(&obj, &obj2, &tmp)
 	defer gc_pop()
 	obj = lisp_read_obj(tok) or_return
-	tok := tok
 	tok = read_token() or_return
 	if len(tok) == 1 && tok[0] == '.' {
 		tok = read_token() or_return
@@ -415,8 +397,7 @@ lisp_read_list :: proc(tok: string) -> (ret: ^Object, err: io.Error) {
 		return nil, .Unknown
 	}
 	tmp = lisp_read_list(tok) or_return
-	obj2 = new_cons(obj, tmp)
-	ret = obj2
+	ret = new_cons(obj, tmp)
 	return
 }
 
@@ -442,15 +423,12 @@ list_reverse :: proc(lst: ^Object) -> ^Object {
 	if lst == nil {
 		return nil
 	}
-	curr: ^Object = lst
-	prev: ^Object = nil
-	next: ^Object = cdr(lst)
+	curr, prev, next: ^Object = lst, nil, cdr(lst)
 	for curr != nil {
 		ccons := curr.(Cons)
 		ccons.cdr = prev
 		curr^ = ccons
-		prev = curr
-		curr = next
+		prev, curr = curr, next
 		if next != nil {
 			next = cdr(next)
 		}
@@ -459,8 +437,7 @@ list_reverse :: proc(lst: ^Object) -> ^Object {
 }
 
 lisp_eval :: proc(expr, env: ^Object) -> ^Object {
-	expr := expr
-	env := env
+	expr, env := expr, env
 	restart: for {
 		if expr == nil {
 			return expr
@@ -468,12 +445,8 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 		_, isatom := expr.(Atom)
 		_, iscons := expr.(Cons)
 		if isatom {
-			if match_number(expr.(Atom)) {
-				return expr
-			}
-			return env_lookup(expr, env)
-		}
-		if !iscons {
+			return expr if match_number(expr.(Atom)) else env_lookup(expr, env)
+		} else if !iscons {
 			return expr
 		}
 
@@ -510,11 +483,7 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 		fn := lisp_eval(head, env)
 		gc_protect(&expr, &env, &fn)
 		defer gc_pop()
-		if fn == nil {
-			fmt.eprintln("Error: cannot evaluate head in current env!")
-			return nil
-		}
-		switch tv in fn {
+		#partial switch tv in fn {
 		case Builtin:
 			args, params, param: ^Object
 			gc_protect(&args, &params, &param)
@@ -539,15 +508,11 @@ lisp_eval :: proc(expr, env: ^Object) -> ^Object {
 			}
 			for ; item != nil; item = cdr(item) {
 				if cdr(item) == nil {
-					expr = car(item)
-					env = callenv
+					expr, env = car(item), callenv
 					continue restart
 				}
 				lisp_eval(car(item), callenv)
 			}
-		case Cons, Atom:
-			fmt.eprintln("Error: calling non-function as function")
-			runtime.trap()
 		}
 		return nil
 	}
@@ -599,10 +564,10 @@ lisp_print :: proc(obj: ^Object) {
 }
 
 intern_names :: proc() -> (err: runtime.Allocator_Error) {
-	TQUOTE = intern_string("quote") or_return
-	TLAMBDA = intern_string("lambda") or_return
-	TCOND = intern_string("cond") or_return
-	TDEFINE = intern_string("define") or_return
+	TQUOTE = strings.intern_get(&interned, "quote") or_return
+	TLAMBDA = strings.intern_get(&interned, "lambda") or_return
+	TCOND = strings.intern_get(&interned, "cond") or_return
+	TDEFINE = strings.intern_get(&interned, "define") or_return
 	return
 }
 

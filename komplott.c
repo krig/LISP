@@ -161,17 +161,14 @@ int lisp_equal(object *a, object *b) {
 	return lisp_equal(a->car, b->car) && lisp_equal(a->cdr, b->cdr);
 }
 
-object *list_find_pair(object *needle, object *haystack) {
-	for (; haystack != NULL; haystack = haystack->cdr)
-		if (haystack->car != NULL && lisp_equal(needle, haystack->car->car))
-			return haystack->car;
-	return NULL;
-}
-
 object *env_lookup(object *needle, object *haystack) {
-	for (object *pair; haystack != NULL; haystack = haystack->cdr)
-		if ((pair = list_find_pair(needle, haystack->car)) != NULL)
-			return pair->cdr;
+	for (object* cur = haystack; cur != NULL; cur = cur->cdr) {
+		for (object *item = cur->car; item != NULL; item = item->cdr) {
+			if (item->car != NULL && lisp_equal(needle, item->car->car)) {
+				return item->car->cdr;
+			}
+		}
+	}
 	return NULL;
 }
 
