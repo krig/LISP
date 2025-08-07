@@ -278,6 +278,8 @@ void lisp_print(object *obj) {
 	} else if (obj->tag == T_LAMBDA) {
 		fputs("<lambda ", stdout);
 		lisp_print(obj->car);
+		fputs(" ", stdout);
+		lisp_print(obj->cdr);
 		fputs(">", stdout);
 	} else if (obj->tag == T_CONS) {
 		fputs("(", stdout);
@@ -474,10 +476,8 @@ int main(int argc, char* argv[]) {
 	for (;;) {
 		obj = lisp_read(in);
 		obj = lisp_eval(obj, env);
-		if (in == stdin) {
-			lisp_print(obj);
-			puts("");
-		}
+		lisp_print(obj);
+		puts("");
 	}
 	return 0;
 }

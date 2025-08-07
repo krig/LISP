@@ -5,8 +5,8 @@
             "type": "lldb-dap",
             "request": "launch",
             "name": "Debug",
-            "program": "${workspaceRoot}/komplott",
-            "args": ["tests/test.scm"],
+            "program": "${workspaceRoot}/komplodin",
+            "args": ["tests/nums.scm"],
             "env": [],
             "cwd": "${workspaceRoot}"
         }
