@@ -11,7 +11,6 @@ import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
 
-ITOS_BYTES :: 40
 HEAP_SIZE :: 16 * mem.Kilobyte
 MAX_ROOTS :: 500
 MAX_FRAMES :: 50
