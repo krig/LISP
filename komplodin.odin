@@ -31,7 +31,7 @@ lisp_reader: bufio.Reader
 intern_string :: proc(s: string) -> string {
 	r, err := strings.intern_get(&interned, s)
 	if err != nil {
-		fmt.eprintfln("Error: %v", err)
+		os.print_error(os.stderr, err, "intern_string")
 		runtime.trap()
 	}
 	return r
@@ -89,23 +89,13 @@ env_lookup :: proc(needle, haystack: ^Cons) -> ^Cons {
 	return nil
 }
 
-gc_init :: proc() {
-	heap = make([]Cons, HEAP_SIZE * 2)
-	fromspace, tospace = &heap[0], &heap[HEAP_SIZE]
-	allocptr = fromspace
-	numroots, roottop = 0, 0
-	return
-}
-
-in_tospace :: proc(p: ^Cons) -> bool {
-	return uintptr(p) >= uintptr(tospace) && uintptr(p) < uintptr(tospace) + HEAP_SIZE*size_of(Cons)
-}
-
 gc_copy :: proc(root: ^^Cons) {
-	if root^ == nil { return }
-	if cons_tag(root^) == .Fwd {
+	if root^ == nil {
+		return
+	} else if cons_tag(root^) == .Fwd {
 		root^ = (root^).cdr
-	} else if in_tospace(root^) {
+	} else if uintptr(root^) >= uintptr(tospace) && \
+		uintptr(root^) < uintptr(tospace) + HEAP_SIZE*size_of(Cons) {
 		p := allocptr
 		allocptr = mem.ptr_offset(allocptr, 1)
 		mem.copy_non_overlapping(p, root^, size_of(Cons))
@@ -531,8 +521,11 @@ lisp_print :: proc(obj: ^Cons) {
 }
 
 main :: proc() {
-	gc_init()
+	heap = make([]Cons, HEAP_SIZE * 2)
 	defer delete(heap)
+	fromspace, tospace = &heap[0], &heap[HEAP_SIZE]
+	allocptr = fromspace
+	numroots, roottop = 0, 0
 
 	token_builder = strings.builder_make()
 	defer strings.builder_destroy(&token_builder)
